@@ -10,8 +10,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <head />
-      <body style={{ fontFamily: "system-ui", margin: 0, padding: 16 }}>
+      <body
+        style={{
+          fontFamily: "system-ui",
+          margin: 0,
+          padding: 16,
+          background: "#cfe9d7", // verde pastel
+        }}
+      >
         <Script
           src="https://www.airbnb.com.pe/embeddable/airbnb_jssdk"
           strategy="afterInteractive"
