@@ -115,6 +115,13 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
     return null;
   };
 
+  const refreshHard = async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("_ts", String(Date.now()));
+    window.history.replaceState({}, "", url.toString());
+    router.refresh();
+  };
+
   const saveAll = async () => {
     setErr(null);
     setOkMsg(null);
@@ -134,9 +141,10 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
         })),
       };
 
-      const resp = await fetch("/api/activities/save", {
+      const resp = await fetch(`/api/activities/save?_ts=${Date.now()}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify(payload),
       });
 
@@ -144,7 +152,7 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
       if (!resp.ok || !data?.ok) throw new Error(data?.error || `Error guardando (HTTP ${resp.status})`);
 
       setOkMsg("Guardado OK.");
-      router.refresh();
+      await refreshHard();
     } catch (e: any) {
       setErr(e?.message || "Error guardando.");
     } finally {
@@ -164,9 +172,10 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
     setUiRows((prev) => prev.map((x) => (x.__key === r.__key ? { ...x, __deleting: true } : x)));
 
     try {
-      const resp = await fetch("/api/activities/delete", {
+      const resp = await fetch(`/api/activities/delete?_ts=${Date.now()}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify({ id: r.id }),
       });
 
@@ -174,7 +183,7 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
       if (!resp.ok || !data?.ok) throw new Error(data?.error || `Error eliminando (HTTP ${resp.status})`);
 
       setUiRows((prev) => prev.filter((x) => x.__key !== r.__key));
-      router.refresh();
+      await refreshHard();
     } catch (e: any) {
       setUiRows((prev) => prev.map((x) => (x.__key === r.__key ? { ...x, __deleting: false } : x)));
       setErr(e?.message || "Error eliminando.");
@@ -335,11 +344,6 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
           font-weight: 800;
           outline: none;
         }
-        .input::placeholder,
-        .textarea::placeholder {
-          color: rgba(31, 81, 50, 0.55);
-          font-weight: 800;
-        }
         .textarea {
           min-height: 44px;
           resize: vertical;
@@ -462,22 +466,6 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
             border-radius: 12px;
           }
         }
-
-        @media (max-width: 480px) {
-          .grid2 {
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-          }
-          .dateNarrow {
-            justify-items: center;
-          }
-          .dateNarrow .input {
-            width: 150px;
-            max-width: 100%;
-            height: 44px;
-            padding-left: 8px;
-            padding-right: 8px;
-          }
-        }
       `}</style>
 
       {err && <div className="msgErr">{err}</div>}
@@ -530,7 +518,7 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
               </div>
 
               <div className="grid2">
-                <div className="field dateNarrow">
+                <div className="field">
                   <label>Fecha</label>
                   <input className="input" type="date" value={toISODate(r.activity_date)} onChange={(e) => setCell(r.__key, { activity_date: e.target.value })} />
                 </div>
