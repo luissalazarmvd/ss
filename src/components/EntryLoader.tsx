@@ -3,9 +3,6 @@
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
 
-// Si tu imagen está en /src/app/loading.png:
-import loadingImg from "../app/loading.png";
-
 export default function EntryLoader({ durationMs = 1400 }: { durationMs?: number }) {
   const [show, setShow] = useState(true);
 
@@ -35,7 +32,6 @@ export default function EntryLoader({ durationMs = 1400 }: { durationMs?: number
           gap: 10px;
         }
 
-        /* Animación: va y vuelve (adelante/atrás) + 2 vueltas a la derecha */
         .anim {
           width: 96px;
           height: 96px;
@@ -80,13 +76,7 @@ export default function EntryLoader({ durationMs = 1400 }: { durationMs?: number
       <div className="overlay" aria-label="Cargando">
         <div className="wrap">
           <div className="anim">
-            <Image
-              src={loadingImg}
-              alt="loading"
-              width={96}
-              height={96}
-              priority
-            />
+            <Image src="/loading.png" alt="loading" width={96} height={96} priority />
           </div>
           <div className="txt">Cargando…</div>
         </div>
