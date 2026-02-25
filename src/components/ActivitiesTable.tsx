@@ -528,6 +528,8 @@ export default function ActivitiesTable() {
         }
 
         textarea.input {
+          height: auto;
+          min-height: 42px;
           resize: none;
           overflow: hidden;
           line-height: 1.25;
@@ -664,7 +666,9 @@ export default function ActivitiesTable() {
                     onInput={(e) => autoGrow(e.currentTarget)}
                     onChange={(e) => {
                       setCell(r.__key, { activity: e.target.value });
-                      autoGrow(e.currentTarget);
+
+                      // iPhone/Safari: ajusta altura después del re-render
+                      requestAnimationFrame(() => autoGrow(e.currentTarget));
                     }}
                   />
 

@@ -15,13 +15,13 @@ export default async function Page() {
       }}
     >
       <h1 style={{ margin: "0 0 12px 0", textAlign: "center", color: DARK_GREEN }}>
-        Viaje: stays + actividades
+        Semana Santa - Estaba aburrido
       </h1>
 
-      <h2 style={{ marginTop: 24, textAlign: "center", color: DARK_GREEN }}>Hospedajes</h2>
+      <h2 style={{ marginTop: 24, textAlign: "center", color: DARK_GREEN }}>Airbnb's</h2>
       <StaysTable />
 
-      <h2 style={{ marginTop: 24, textAlign: "center", color: DARK_GREEN }}>Actividades</h2>
+      <h2 style={{ marginTop: 24, textAlign: "center", color: DARK_GREEN }}>Qué haremos</h2>
       <ActivitiesTable />
     </main>
   );
