@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
 
-export default function EntryLoader({ durationMs = 1400 }: { durationMs?: number }) {
+export default function EntryLoader({ durationMs = 2100 }: { durationMs?: number }) {
   const [show, setShow] = useState(true);
 
   useEffect(() => {
