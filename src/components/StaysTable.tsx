@@ -106,20 +106,7 @@ function AirbnbEmbed({
 export default function StaysTable({ rows }: { rows: StayRow[] }) {
   const [data, setData] = useState<UIStayRow[]>([]);
   const [openEmbedForKey, setOpenEmbedForKey] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
   const confirmTimersRef = useRef<Record<string, any>>({});
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 480px)");
-    const apply = () => setIsMobile(!!mq.matches);
-    apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
 
   useEffect(() => {
     setData(
@@ -231,7 +218,6 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
   const deleteRow = async (row: UIStayRow) => {
     const link = (row.listing_link ?? "").trim();
     const orig = (row.__orig_link ?? "").trim();
-
     const id = link || orig;
 
     updateLocal(row.__key, { __deleting: true, __error: null, __confirm_delete: false });
@@ -336,24 +322,38 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
         .cards {
           display: grid;
           gap: 12px;
+          place-items: center;
+          width: 100%;
+          max-width: 100%;
         }
         .card {
+          width: min(560px, calc(100vw - 28px));
+          max-width: 100%;
           border: 1px solid #c6d9cc;
           border-radius: 14px;
           padding: 12px;
           background: #e8f6ee;
+          overflow: hidden;
         }
+
         .grid2 {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
           gap: 10px;
           margin-top: 10px;
+          align-items: start;
         }
         .grid3 {
           display: grid;
-          grid-template-columns: 1fr 1fr 1fr;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
           gap: 10px;
           margin-top: 10px;
+          align-items: start;
+        }
+        .field {
+          display: grid;
+          justify-items: stretch;
+          min-width: 0;
         }
         .field label {
           display: block;
@@ -367,6 +367,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
         .input,
         .select {
           width: 100%;
+          min-width: 0;
           padding: 10px 10px;
           border-radius: 12px;
           border: 1px solid #c6d9cc;
@@ -403,12 +404,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           display: flex;
           gap: 8px;
           align-items: center;
-        }
-        .linkA {
-          text-decoration: none;
-          font-weight: 900;
-          color: #1f5132;
-          border-bottom: 2px solid rgba(31, 81, 50, 0.25);
+          min-width: 0;
         }
 
         .tableWrap {
@@ -500,14 +496,26 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
 
         @media (max-width: 480px) {
           .grid2 {
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
           }
           .grid3 {
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
           }
-          .dateNarrow :global(input[type="date"]) {
-            padding: 10px 10px;
+
+          .dateNarrow .input {
+            padding-left: 8px;
+            padding-right: 8px;
+            height: 44px;
           }
+
+          .dateNarrow {
+            justify-items: center;
+          }
+          .dateNarrow .input {
+            width: 150px;
+            max-width: 100%;
+          }
+
           .linkLine {
             display: block;
           }
@@ -553,7 +561,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
 
           return (
             <div className="card" key={r.__key}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                 <div style={{ fontWeight: 900, color: "#1f5132" }}>{r.place}</div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontWeight: 900, fontSize: 18, color: "#1f5132" }}>{fmtMoney(r.total_price)}</div>
@@ -589,46 +597,22 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               <div className="grid2">
                 <div className="field dateNarrow">
                   <label>Check In</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={toISODate(r.check_in_date)}
-                    onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value, __confirm_delete: false })}
-                  />
+                  <input className="input" type="date" value={toISODate(r.check_in_date)} onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value, __confirm_delete: false })} />
                 </div>
                 <div className="field dateNarrow">
                   <label>Check Out</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={toISODate(r.check_out_date)}
-                    onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value, __confirm_delete: false })}
-                  />
+                  <input className="input" type="date" value={toISODate(r.check_out_date)} onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value, __confirm_delete: false })} />
                 </div>
               </div>
 
               <div className="grid3">
                 <div className="field">
                   <label>#Cuartos</label>
-                  <input
-                    className="input"
-                    type="number"
-                    inputMode="numeric"
-                    step="1"
-                    value={r.rooms ?? ""}
-                    onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value), __confirm_delete: false })}
-                  />
+                  <input className="input" type="number" inputMode="numeric" step="1" value={r.rooms ?? ""} onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value), __confirm_delete: false })} />
                 </div>
                 <div className="field">
                   <label>#Camas</label>
-                  <input
-                    className="input"
-                    type="number"
-                    inputMode="numeric"
-                    step="1"
-                    value={r.beds ?? ""}
-                    onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value), __confirm_delete: false })}
-                  />
+                  <input className="input" type="number" inputMode="numeric" step="1" value={r.beds ?? ""} onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value), __confirm_delete: false })} />
                 </div>
                 <div className="field">
                   <label>C/U (S/.)</label>
@@ -639,21 +623,31 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               <div className="field" style={{ marginTop: 10 }}>
                 <label>Link</label>
                 <div className="linkLine">
-                  <input
-                    className="input"
-                    placeholder="Pega link aquí…"
-                    value={r.__link_input ?? ""}
-                    onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })}
-                  />
+                  <input className="input" placeholder="Pega link aquí…" value={r.__link_input ?? ""} onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })} />
                   <button className="btn btnIcon" onClick={() => setOpenEmbedForKey(r.__key)} disabled={!id} title={!id ? "No hay link guardado para preview" : "Ver preview"}>
                     🔎
                   </button>
                 </div>
 
-                <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center" }}>
+                <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", justifyContent: "center" }}>
                   {r.listing_link ? (
-                    <a className="linkA" href={r.listing_link} target="_blank" rel="noreferrer">
-                      link
+                    <a
+                      className="muted"
+                      href={r.listing_link}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        fontWeight: 900,
+                        textDecoration: "none",
+                        borderBottom: "2px solid rgba(31,81,50,.25)",
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        display: "inline-block",
+                      }}
+                    >
+                      {r.listing_link}
                     </a>
                   ) : (
                     <span className="muted">Sin link guardado (Preview no disponible)</span>
@@ -662,18 +656,18 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               </div>
 
               {r.__error && (
-                <div style={{ marginTop: 10, background: "#fee", border: "1px solid #f5c2c2", padding: 10, borderRadius: 12, color: "#7a1020", fontWeight: 800 }}>
+                <div style={{ marginTop: 10, background: "#fee", border: "1px solid #f5c2c2", padding: 10, borderRadius: 12, color: "#7a1020", fontWeight: 800, textAlign: "center" }}>
                   {r.__error}
                 </div>
               )}
 
-              {isMobile && id && (
+              {id && (
                 <div style={{ marginTop: 12 }}>
                   <AirbnbEmbed listingId={id} checkIn={r.check_in_date} checkOut={r.check_out_date} adults={4} />
                 </div>
               )}
 
-              <div className="rowActions">
+              <div className="rowActions" style={{ justifyContent: "center" }}>
                 <button className="btn btnPrimary" onClick={() => saveRow(r)} disabled={!!r.__saving || !!r.__deleting}>
                   {r.__saving ? "Guardando…" : "Guardar"}
                 </button>
@@ -729,32 +723,15 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   </td>
 
                   <td className="colDate">
-                    <input
-                      className="input"
-                      type="date"
-                      value={toISODate(r.check_in_date)}
-                      onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value, __confirm_delete: false })}
-                    />
+                    <input className="input" type="date" value={toISODate(r.check_in_date)} onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value, __confirm_delete: false })} />
                   </td>
 
                   <td className="colDate">
-                    <input
-                      className="input"
-                      type="date"
-                      value={toISODate(r.check_out_date)}
-                      onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value, __confirm_delete: false })}
-                    />
+                    <input className="input" type="date" value={toISODate(r.check_out_date)} onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value, __confirm_delete: false })} />
                   </td>
 
                   <td className="colMoney">
-                    <input
-                      className="input"
-                      type="number"
-                      inputMode="decimal"
-                      step="0.01"
-                      value={Number(r.total_price)}
-                      onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0), __confirm_delete: false })}
-                    />
+                    <input className="input" type="number" inputMode="decimal" step="0.01" value={Number(r.total_price)} onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0), __confirm_delete: false })} />
                   </td>
 
                   <td className="colPP" style={{ color: "#2a5e3b", fontWeight: 900 }}>
@@ -762,34 +739,15 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   </td>
 
                   <td className="colRooms">
-                    <input
-                      className="input"
-                      type="number"
-                      inputMode="numeric"
-                      step="1"
-                      value={r.rooms ?? ""}
-                      onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value), __confirm_delete: false })}
-                    />
+                    <input className="input" type="number" inputMode="numeric" step="1" value={r.rooms ?? ""} onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value), __confirm_delete: false })} />
                   </td>
 
                   <td className="colBeds">
-                    <input
-                      className="input"
-                      type="number"
-                      inputMode="numeric"
-                      step="1"
-                      value={r.beds ?? ""}
-                      onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value), __confirm_delete: false })}
-                    />
+                    <input className="input" type="number" inputMode="numeric" step="1" value={r.beds ?? ""} onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value), __confirm_delete: false })} />
                   </td>
 
                   <td className="colLink">
-                    <input
-                      className="input"
-                      placeholder="Pega…"
-                      value={r.__link_input ?? ""}
-                      onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })}
-                    />
+                    <input className="input" placeholder="Pega…" value={r.__link_input ?? ""} onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })} />
                     {r.__error ? <div style={{ marginTop: 6, color: "#7a1020", fontWeight: 900 }}>{r.__error}</div> : null}
                   </td>
 
