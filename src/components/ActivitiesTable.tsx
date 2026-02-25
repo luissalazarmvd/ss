@@ -43,9 +43,11 @@ function isValidId(id: any) {
 function sortRows(a: UIActivityRow, b: UIActivityRow) {
   const da = a.activity_date.localeCompare(b.activity_date);
   if (da !== 0) return da;
+
   const oa = Number(a.order_no ?? 1e9);
   const ob = Number(b.order_no ?? 1e9);
   if (oa !== ob) return oa - ob;
+
   return String(a.__key).localeCompare(String(b.__key));
 }
 
@@ -73,7 +75,9 @@ async function fetchActivitiesNoCache(): Promise<ActivityRow[]> {
     },
   });
 
-  const j: ListResp = await res.json().catch(() => ({ ok: false, rows: [], error: "Respuesta inválida" } as any));
+  const j: ListResp = await res.json().catch(
+    () => ({ ok: false, rows: [], error: "Respuesta inválida" } as any)
+  );
   if (!res.ok || !j?.ok) throw new Error(j?.error || `Error cargando (HTTP ${res.status})`);
   return j.rows ?? [];
 }
@@ -98,15 +102,20 @@ export default function ActivitiesTable() {
   const aliveRef = useRef(true);
   const refreshInFlightRef = useRef(false);
 
+  // IMPORTANT: no dependemos de dataTransfer.getData() durante dragover (en varios browsers viene vacío).
+  const dragRef = useRef<{ key: string; date: string } | null>(null);
+
   const grouped = useMemo(() => {
     const byDate = new Map<string, UIActivityRow[]>();
     for (const d of DATE_OPTIONS) byDate.set(d, []);
+
     for (const r of uiRows) {
       const d = toISODate(r.activity_date);
       if (!DATE_OPTIONS.includes(d as any)) continue;
       if (!byDate.has(d)) byDate.set(d, []);
       byDate.get(d)!.push(r);
     }
+
     return DATE_OPTIONS.map((d) => [d, byDate.get(d) ?? []] as const);
   }, [uiRows]);
 
@@ -151,6 +160,7 @@ export default function ActivitiesTable() {
       document.removeEventListener("visibilitychange", onVis);
       clearInterval(t);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setCell = (key: string, patch: Partial<ActivityRow>) => {
@@ -181,8 +191,14 @@ export default function ActivitiesTable() {
           __deleting: false,
         },
       ];
-      const ordered = mapToUI(next);
-      return ordered;
+
+      // Que caiga al final de su fecha (según order_no)
+      const withOrder = renumberDate(
+        next.map((x) => (toISODate(x.activity_date) === date && x.__key === k ? { ...x, order_no: 1e9 } : x)),
+        date
+      );
+
+      return withOrder.sort(sortRows);
     });
   };
 
@@ -209,18 +225,17 @@ export default function ActivitiesTable() {
 
     setSaving(true);
     try {
+      // armamos payload RESPETANDO orden visual (el orden de items en grouped)
       const out: any[] = [];
       for (const [d, items] of grouped) {
         items.forEach((r, idx) => {
-          const base = {
+          const base: any = {
             place: r.place,
             activity_date: d,
             activity: r.activity,
-            order_no: idx + 1,
-          } as any;
-
+            order_no: idx + 1, // <- esto es lo que Supabase debe guardar para reordenar
+          };
           if (isValidId(r.id)) base.id = r.id;
-
           out.push(base);
         });
       }
@@ -281,30 +296,33 @@ export default function ActivitiesTable() {
     }
   };
 
-  const onDragStartRow = (key: string, date: string) => (e: React.DragEvent) => {
+  // ---- DnD helpers (solo el handle es draggable) ----
+  const startDrag = (key: string, date: string) => (e: React.DragEvent) => {
     if (!key || !date) return;
-    const payload = { key, date };
-    const s = JSON.stringify(payload);
-    try {
-      e.dataTransfer.setData("application/json", s);
-      e.dataTransfer.setData("text/plain", s);
-      e.dataTransfer.effectAllowed = "move";
-    } catch {}
+
+    dragRef.current = { key, date };
     setDragKey(key);
     setDragDate(date);
     setOverKey(null);
+
+    // setData igual (sirve para algunos browsers / drag image), pero NO dependemos de leerlo en dragover
+    const payload = JSON.stringify({ key, date });
+    try {
+      e.dataTransfer.setData("text/plain", payload);
+      e.dataTransfer.effectAllowed = "move";
+    } catch {}
+
+    // evita que el drag arranque desde texto seleccionado
+    try {
+      (e.currentTarget as HTMLElement).blur?.();
+    } catch {}
   };
 
-  const readPayload = (e: React.DragEvent): { key: string; date: string } | null => {
-    const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain") || "";
-    if (!raw) return null;
-    try {
-      const p = JSON.parse(raw) as any;
-      if (!p?.key || !p?.date) return null;
-      return { key: String(p.key), date: String(p.date) };
-    } catch {
-      return null;
-    }
+  const endDrag = () => {
+    dragRef.current = null;
+    setOverKey(null);
+    setDragKey(null);
+    setDragDate(null);
   };
 
   const reorderWithinDate = (fromKey: string, toKey: string, date: string) => {
@@ -317,33 +335,29 @@ export default function ActivitiesTable() {
       if (toISODate(prev[to].activity_date) !== date) return prev;
 
       const moved = moveItem(prev, from, to);
-      return renumberDate(moved, date);
+      const ren = renumberDate(moved, date);
+
+      // Mantén orden global consistente (fecha + order_no)
+      return ren.sort(sortRows);
     });
   };
 
   const onDragOverRow = (targetKey: string, targetDate: string) => (e: React.DragEvent) => {
-    const p = readPayload(e);
+    const p = dragRef.current;
     if (!p) return;
     if (p.date !== targetDate) return;
     if (p.key === targetKey) return;
 
-    e.preventDefault();
+    e.preventDefault(); // <- necesario para permitir drop
     e.dataTransfer.dropEffect = "move";
+
     setOverKey(targetKey);
     reorderWithinDate(p.key, targetKey, targetDate);
   };
 
   const onDropRow = (e: React.DragEvent) => {
     e.preventDefault();
-    setOverKey(null);
-    setDragKey(null);
-    setDragDate(null);
-  };
-
-  const onDragEndRow = () => {
-    setOverKey(null);
-    setDragKey(null);
-    setDragDate(null);
+    endDrag();
   };
 
   return (
@@ -491,8 +505,11 @@ export default function ActivitiesTable() {
           cursor: grab;
         }
 
-        .rowLine.dragging .dragHandle {
+        .dragHandle:active {
           cursor: grabbing;
+        }
+
+        .rowLine.dragging .dragHandle {
           background: #dff1e6;
         }
 
@@ -577,7 +594,7 @@ export default function ActivitiesTable() {
       <div className="topbar">
         <div>
           <div style={{ fontWeight: 900, fontSize: 18, color: "#1f5132" }}>Activities</div>
-          <div className="muted">Fechas fijas. Ordena dentro de cada fecha y guarda.</div>
+          <div className="muted">Fechas fijas. Arrastra con “≡” para reordenar y guarda.</div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -611,19 +628,27 @@ export default function ActivitiesTable() {
                 <div
                   key={r.__key}
                   className={`rowLine${isDragging ? " dragging" : ""}${isOver ? " over" : ""}`}
-                  draggable
-                  onDragStart={onDragStartRow(r.__key, d)}
                   onDragOver={onDragOverRow(r.__key, d)}
                   onDrop={onDropRow}
-                  onDragEnd={onDragEndRow}
                   data-rowkey={r.__key}
                   data-date={d}
                 >
-                  <div className="dragHandle dragCell" title="Arrastrar">
+                  {/* SOLO EL HANDLE ES DRAGGABLE */}
+                  <div
+                    className="dragHandle dragCell"
+                    title="Arrastrar"
+                    draggable
+                    onDragStart={startDrag(r.__key, d)}
+                    onDragEnd={endDrag}
+                  >
                     ≡
                   </div>
 
-                  <select className="select placeCell" value={r.place} onChange={(e) => setCell(r.__key, { place: e.target.value })}>
+                  <select
+                    className="select placeCell"
+                    value={r.place}
+                    onChange={(e) => setCell(r.__key, { place: e.target.value })}
+                  >
                     {PLACES.map((p) => (
                       <option key={p} value={p}>
                         {p}
