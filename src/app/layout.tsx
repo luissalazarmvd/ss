@@ -34,7 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             z-index: 0;
             pointer-events: none;
             display: grid;
-            grid-template-columns: repeat(auto-fill, var(--tile));
+            grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr));
             grid-auto-rows: var(--tile);
             opacity: var(--opacity);
           }
