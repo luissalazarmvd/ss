@@ -5,6 +5,13 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "SS - Viaje",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -15,14 +22,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           fontFamily: "system-ui",
           margin: 0,
           padding: 16,
-          background: "#cfe9d7", // verde pastel
+          background: "#cfe9d7",
         }}
       >
-        <Script
-          src="https://www.airbnb.com.pe/embeddable/airbnb_jssdk"
-          strategy="afterInteractive"
-        />
-        <main style={{ maxWidth: 1100, margin: "0 auto" }}>{children}</main>
+        <Script src="https://www.airbnb.com.pe/embeddable/airbnb_jssdk" strategy="afterInteractive" />
+        {children}
       </body>
     </html>
   );
