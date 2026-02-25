@@ -1,7 +1,7 @@
 // src/components/StaysTable.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type StayRow = {
   place: string;
@@ -14,8 +14,8 @@ type StayRow = {
 };
 
 type UIStayRow = StayRow & {
-  __key: string;                 // key local (para React)
-  __orig_link: string | null;    // link original para poder actualizar aunque cambie el link
+  __key: string;
+  __orig_link: string | null;
   __saving?: boolean;
   __error?: string | null;
 };
@@ -24,9 +24,7 @@ const PLACES = ["Viaje", "Pozuzo", "Oxapampa"] as const;
 
 function toISODate(v: any) {
   if (!v) return "";
-  // si viene ISO completo, cortamos
-  const s = String(v);
-  return s.slice(0, 10);
+  return String(v).slice(0, 10);
 }
 
 function getAirbnbId(url: string | null) {
@@ -52,29 +50,74 @@ function toNum(v: string, fallback = 0) {
   return Number.isFinite(x) ? x : fallback;
 }
 
+/**
+ * EMBED Airbnb que “re-renderiza” siempre:
+ * - Inyecta el script cuando se monta.
+ * - Si ya existe, lo reemplaza para forzar ejecución.
+ */
 function AirbnbEmbed({
   listingId,
+  checkIn,
+  checkOut,
+  adults = 4,
   width = 450,
   height = 300,
 }: {
   listingId: string;
+  checkIn?: string;
+  checkOut?: string;
+  adults?: number;
   width?: number;
   height?: number;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const embedHref = useMemo(() => {
+    const ci = checkIn ? `check_in=${encodeURIComponent(toISODate(checkIn))}` : "";
+    const co = checkOut ? `&check_out=${encodeURIComponent(toISODate(checkOut))}` : "";
+    const ad = `&adults=${encodeURIComponent(String(adults))}`;
+    return `https://es-l.airbnb.com/rooms/${listingId}?${ci}${co}${ad}&s=66&source=embed_widget`;
+  }, [listingId, checkIn, checkOut, adults]);
+
+  useEffect(() => {
+    // Forzar que el script “corra” después de insertar el div embed.
+    // Airbnb SDK suele escanear el DOM al ejecutarse.
+    const SRC = "https://www.airbnb.com.pe/embeddable/airbnb_jssdk";
+    const id = "airbnb_jssdk_force";
+
+    // Remueve script previo para re-ejecutarlo
+    const prev = document.getElementById(id);
+    if (prev) prev.remove();
+
+    const s = document.createElement("script");
+    s.id = id;
+    s.async = true;
+    s.src = SRC;
+
+    // Insertar al final del body (o head)
+    document.body.appendChild(s);
+
+    return () => {
+      // opcional: no lo removemos en cleanup para no estar creando/quitando en cada render
+      // pero si quieres estricto:
+      // const x = document.getElementById(id); if (x) x.remove();
+    };
+  }, [listingId, checkIn, checkOut]);
+
   return (
     <div
+      ref={containerRef}
       className="airbnb-embed-frame"
       data-id={listingId}
       data-view="home"
       data-hide-price="true"
       style={{ width, height, margin: "0 auto" }}
     >
-      <a
-        href={`https://es-l.airbnb.com/rooms/${listingId}?source=embed_widget`}
-        target="_blank"
-        rel="noreferrer"
-      >
+      <a href={embedHref} target="_blank" rel="noreferrer">
         Ver en Airbnb
+      </a>
+      <a href={embedHref} target="_blank" rel="nofollow noreferrer">
+        Abrir detalle
       </a>
     </div>
   );
@@ -95,12 +138,18 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
 
   const [openEmbedForKey, setOpenEmbedForKey] = useState<string | null>(null);
 
-  const openRow = useMemo(() => data.find((r) => r.__key === openEmbedForKey) ?? null, [data, openEmbedForKey]);
-  const embedId = useMemo(() => getAirbnbId(openRow?.listing_link ?? null), [openRow?.listing_link]);
+  const openRow = useMemo(
+    () => data.find((r) => r.__key === openEmbedForKey) ?? null,
+    [data, openEmbedForKey]
+  );
+
+  const embedId = useMemo(
+    () => getAirbnbId(openRow?.listing_link ?? null),
+    [openRow?.listing_link]
+  );
 
   const addRow = () => {
-    const today = new Date();
-    const iso = today.toISOString().slice(0, 10);
+    const iso = new Date().toISOString().slice(0, 10);
 
     const newRow: UIStayRow = {
       place: "Viaje",
@@ -127,7 +176,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
     updateLocal(row.__key, { __saving: true, __error: null });
 
     const payload = {
-      orig_link: row.__orig_link, // puede ser null si es nueva
+      orig_link: row.__orig_link,
       row: {
         place: row.place,
         check_in_date: row.check_in_date,
@@ -147,14 +196,8 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
       });
 
       const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j?.ok) throw new Error(j?.error || `Error guardando (HTTP ${res.status})`);
 
-      if (!res.ok || !j?.ok) {
-        throw new Error(j?.error || `Error guardando (HTTP ${res.status})`);
-      }
-
-      // si guardó bien:
-      // 1) el link actual pasa a ser el nuevo orig_link
-      // 2) normalizamos fechas y precio
       updateLocal(row.__key, {
         __saving: false,
         __error: null,
@@ -204,7 +247,6 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           font-size: 13px;
         }
 
-        /* Mobile cards */
         .cards {
           display: grid;
           gap: 12px;
@@ -259,7 +301,6 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           font-weight: 600;
         }
 
-        /* Desktop table */
         .tableWrap {
           display: none;
           overflow-x: auto;
@@ -280,7 +321,6 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           border-bottom: 1px solid #ddd;
         }
 
-        /* Modal */
         .overlay {
           position: fixed;
           inset: 0;
@@ -293,7 +333,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
         }
         .modal {
           width: 100%;
-          max-width: 560px;
+          max-width: 720px;
           background: #fff;
           border-radius: 16px;
           padding: 12px;
@@ -346,11 +386,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               <div className="grid2">
                 <div className="field">
                   <label>Place</label>
-                  <select
-                    className="select"
-                    value={r.place}
-                    onChange={(e) => updateLocal(r.__key, { place: e.target.value })}
-                  >
+                  <select className="select" value={r.place} onChange={(e) => updateLocal(r.__key, { place: e.target.value })}>
                     {PLACES.map((p) => (
                       <option key={p} value={p}>{p}</option>
                     ))}
@@ -372,44 +408,22 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               <div className="grid2">
                 <div className="field">
                   <label>Check-in</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={toISODate(r.check_in_date)}
-                    onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value })}
-                  />
+                  <input className="input" type="date" value={toISODate(r.check_in_date)} onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value })} />
                 </div>
                 <div className="field">
                   <label>Check-out</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={toISODate(r.check_out_date)}
-                    onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value })}
-                  />
+                  <input className="input" type="date" value={toISODate(r.check_out_date)} onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value })} />
                 </div>
               </div>
 
               <div className="grid3">
                 <div className="field">
                   <label>Rooms</label>
-                  <input
-                    className="input"
-                    type="number"
-                    step="1"
-                    value={r.rooms ?? ""}
-                    onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value) })}
-                  />
+                  <input className="input" type="number" step="1" value={r.rooms ?? ""} onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value) })} />
                 </div>
                 <div className="field">
                   <label>Beds</label>
-                  <input
-                    className="input"
-                    type="number"
-                    step="1"
-                    value={r.beds ?? ""}
-                    onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value) })}
-                  />
+                  <input className="input" type="number" step="1" value={r.beds ?? ""} onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value) })} />
                 </div>
                 <div className="field">
                   <label>Precio x Persona</label>
@@ -426,7 +440,6 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                     value={r.listing_link ?? ""}
                     onChange={(e) => updateLocal(r.__key, { listing_link: e.target.value })}
                   />
-
                   <button
                     className="btn btnIcon"
                     onClick={() => setOpenEmbedForKey(r.__key)}
@@ -455,12 +468,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               )}
 
               <div className="rowActions">
-                <button
-                  className={`btn btnPrimary`}
-                  onClick={() => saveRow(r)}
-                  disabled={!!r.__saving}
-                  title="Guardar en Supabase"
-                >
+                <button className="btn btnPrimary" onClick={() => saveRow(r)} disabled={!!r.__saving}>
                   {r.__saving ? "Guardando…" : "Guardar"}
                 </button>
               </div>
@@ -476,11 +484,9 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
         <table>
           <thead>
             <tr>
-              {["place", "check_in", "check_out", "total_price", "px_persona(4)", "rooms", "beds", "listing_link", "embed", "save"].map(
-                (h) => (
-                  <th key={h}>{h}</th>
-                )
-              )}
+              {["place", "check_in", "check_out", "total_price", "px_persona(4)", "rooms", "beds", "listing_link", "embed", "save"].map((h) => (
+                <th key={h}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -491,11 +497,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               return (
                 <tr key={r.__key}>
                   <td>
-                    <select
-                      className="select"
-                      value={r.place}
-                      onChange={(e) => updateLocal(r.__key, { place: e.target.value })}
-                    >
+                    <select className="select" value={r.place} onChange={(e) => updateLocal(r.__key, { place: e.target.value })}>
                       {PLACES.map((p) => (
                         <option key={p} value={p}>{p}</option>
                       ))}
@@ -503,63 +505,30 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   </td>
 
                   <td>
-                    <input
-                      className="input"
-                      type="date"
-                      value={toISODate(r.check_in_date)}
-                      onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value })}
-                    />
+                    <input className="input" type="date" value={toISODate(r.check_in_date)} onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value })} />
                   </td>
 
                   <td>
-                    <input
-                      className="input"
-                      type="date"
-                      value={toISODate(r.check_out_date)}
-                      onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value })}
-                    />
+                    <input className="input" type="date" value={toISODate(r.check_out_date)} onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value })} />
                   </td>
 
                   <td>
-                    <input
-                      className="input"
-                      type="number"
-                      step="0.01"
-                      value={Number(r.total_price)}
-                      onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0) })}
-                    />
+                    <input className="input" type="number" step="0.01" value={Number(r.total_price)} onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0) })} />
                   </td>
 
                   <td className="muted">{fmtMoney(perPerson)}</td>
 
                   <td>
-                    <input
-                      className="input"
-                      type="number"
-                      step="1"
-                      value={r.rooms ?? ""}
-                      onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value) })}
-                    />
+                    <input className="input" type="number" step="1" value={r.rooms ?? ""} onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value) })} />
                   </td>
 
                   <td>
-                    <input
-                      className="input"
-                      type="number"
-                      step="1"
-                      value={r.beds ?? ""}
-                      onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value) })}
-                    />
+                    <input className="input" type="number" step="1" value={r.beds ?? ""} onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value) })} />
                   </td>
 
                   <td style={{ minWidth: 380 }}>
                     <div className="linkLine">
-                      <input
-                        className="input"
-                        placeholder="link…"
-                        value={r.listing_link ?? ""}
-                        onChange={(e) => updateLocal(r.__key, { listing_link: e.target.value })}
-                      />
+                      <input className="input" placeholder="link…" value={r.listing_link ?? ""} onChange={(e) => updateLocal(r.__key, { listing_link: e.target.value })} />
                       {r.listing_link ? (
                         <a className="btn" href={r.listing_link} target="_blank" rel="noreferrer">
                           link
@@ -570,22 +539,13 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   </td>
 
                   <td>
-                    <button
-                      className="btn btnIcon"
-                      onClick={() => setOpenEmbedForKey(r.__key)}
-                      disabled={!id}
-                      title={!id ? "No pude leer el ID del link" : "Ver embed"}
-                    >
+                    <button className="btn btnIcon" onClick={() => setOpenEmbedForKey(r.__key)} disabled={!id} title={!id ? "No pude leer el ID del link" : "Ver embed"}>
                       🔎
                     </button>
                   </td>
 
                   <td>
-                    <button
-                      className="btn btnPrimary"
-                      onClick={() => saveRow(r)}
-                      disabled={!!r.__saving}
-                    >
+                    <button className="btn btnPrimary" onClick={() => saveRow(r)} disabled={!!r.__saving}>
                       {r.__saving ? "…" : "Guardar"}
                     </button>
                   </td>
@@ -615,8 +575,15 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               </button>
             </div>
 
-            {embedId ? (
-              <AirbnbEmbed listingId={embedId} width={450} height={300} />
+            {embedId && openRow ? (
+              <AirbnbEmbed
+                listingId={embedId}
+                checkIn={openRow.check_in_date}
+                checkOut={openRow.check_out_date}
+                adults={4}
+                width={450}
+                height={300}
+              />
             ) : (
               <div className="muted">No pude extraer el ID del link.</div>
             )}
@@ -627,7 +594,9 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   Abrir en Airbnb
                 </a>
               ) : (
-                <span className="muted" style={{ flex: 1 }}>Sin link</span>
+                <span className="muted" style={{ flex: 1 }}>
+                  Sin link
+                </span>
               )}
               <button className="btn btnPrimary" onClick={() => setOpenEmbedForKey(null)} style={{ flex: 1 }}>
                 Listo
