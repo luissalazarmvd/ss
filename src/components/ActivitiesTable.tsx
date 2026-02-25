@@ -64,9 +64,27 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
 
   const viewRows = useMemo(() => sortByDateAsc(uiRows), [uiRows]);
 
+  const grouped = useMemo(() => {
+    const m = new Map<string, UIActivityRow[]>();
+    for (const r of viewRows) {
+      const d = toISODate(r.activity_date) || "Sin fecha";
+      if (!m.has(d)) m.set(d, []);
+      m.get(d)!.push(r);
+    }
+    return Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [viewRows]);
+
   const setCell = (key: string, patch: Partial<ActivityRow>) => {
     setUiRows((prev) =>
-      prev.map((r) => (r.__key === key ? { ...r, ...patch, activity_date: patch.activity_date !== undefined ? toISODate(patch.activity_date) : r.activity_date } : r))
+      prev.map((r) =>
+        r.__key === key
+          ? {
+              ...r,
+              ...patch,
+              activity_date: patch.activity_date !== undefined ? toISODate(patch.activity_date) : r.activity_date,
+            }
+          : r
+      )
     );
   };
 
@@ -238,11 +256,6 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
           justify-content: center;
           padding: 0;
         }
-        .btnSaveMini {
-          padding: 8px 10px;
-          border-radius: 12px;
-          min-width: 0;
-        }
         .muted {
           color: #2a5e3b;
           opacity: 0.9;
@@ -380,15 +393,55 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
         .colAct {
           width: auto;
         }
-        .colSave {
-          width: 96px;
-        }
         .colDel {
           width: 70px;
         }
 
+        .mobileList {
+          display: block;
+        }
+        .dayGroup {
+          width: min(560px, calc(100vw - 28px));
+          border: 1px solid #c6d9cc;
+          border-radius: 14px;
+          background: #e8f6ee;
+          overflow: hidden;
+          margin: 0 auto 12px;
+        }
+        .dayHeader {
+          padding: 10px 12px;
+          font-weight: 900;
+          color: #1f5132;
+          border-bottom: 1px solid rgba(31, 81, 50, 0.2);
+          background: #e2f3e8;
+        }
+        .rowLine {
+          display: grid;
+          grid-template-columns: 140px minmax(0, 1fr);
+          gap: 10px;
+          padding: 10px 12px;
+          border-bottom: 1px solid rgba(31, 81, 50, 0.15);
+          color: #1f5132;
+          font-weight: 800;
+        }
+        .rowLine:last-child {
+          border-bottom: none;
+        }
+        .rowLeft {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .rowRight {
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
         @media (min-width: 950px) {
           .cards {
+            display: none;
+          }
+          .mobileList {
             display: none;
           }
           .tableWrap {
@@ -402,9 +455,6 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
           .input,
           .textarea {
             padding: 8px 8px;
-          }
-          .btnSaveMini {
-            padding: 8px 9px;
           }
           .btnIcon {
             width: 36px;
@@ -447,6 +497,21 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
             +
           </button>
         </div>
+      </div>
+
+      <div className="mobileList">
+        {grouped.map(([d, items]) => (
+          <div key={d} className="dayGroup">
+            <div className="dayHeader">{d}</div>
+            {items.map((r) => (
+              <div key={r.__key} className="rowLine">
+                <div className="rowLeft">{r.place?.trim() ? r.place : "Sin lugar"}</div>
+                <div className="rowRight">{r.activity?.trim() ? r.activity : "—"}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+        {!viewRows.length && <div className="muted">No hay filas en activities.</div>}
       </div>
 
       <div className="cards">
