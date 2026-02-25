@@ -278,6 +278,10 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           border-radius: 12px;
           min-width: 0;
         }
+        .btnDangerWide {
+          padding: 10px 12px;
+          border-radius: 12px;
+        }
         .muted {
           color: #2a5e3b;
           opacity: 0.9;
@@ -421,7 +425,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           width: 88px;
         }
         .colDel {
-          width: 56px;
+          width: 70px;
         }
 
         @media (min-width: 950px) {
@@ -447,6 +451,24 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
             width: 36px;
             height: 36px;
             border-radius: 12px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .grid2 {
+            grid-template-columns: 1fr 1fr;
+          }
+          .grid3 {
+            grid-template-columns: 1fr 1fr 1fr;
+          }
+          .dateNarrow :global(input[type="date"]) {
+            padding: 8px 8px;
+          }
+          .linkLine {
+            display: block;
+          }
+          .linkLine .btnIcon {
+            display: none;
           }
         }
 
@@ -514,11 +536,11 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               </div>
 
               <div className="grid2">
-                <div className="field">
+                <div className="field dateNarrow">
                   <label>Check In</label>
                   <input className="input" type="date" value={toISODate(r.check_in_date)} onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value })} />
                 </div>
-                <div className="field">
+                <div className="field dateNarrow">
                   <label>Check Out</label>
                   <input className="input" type="date" value={toISODate(r.check_out_date)} onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value })} />
                 </div>
@@ -569,8 +591,21 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                 <button className="btn btnPrimary" onClick={() => saveRow(r)} disabled={!!r.__saving || !!r.__deleting}>
                   {r.__saving ? "Guardando…" : "Guardar"}
                 </button>
-                <button className="btn btnDanger btnIcon" onClick={() => deleteRow(r)} disabled={!!r.__saving || !!r.__deleting} title="Eliminar (por listing_link)">
+                <button
+                  className="btn btnDanger btnIcon btnDelShort"
+                  onClick={() => deleteRow(r)}
+                  disabled={!!r.__saving || !!r.__deleting}
+                  title="Eliminar (por listing_link)"
+                >
                   {r.__deleting ? "…" : "-"}
+                </button>
+                <button
+                  className="btn btnDanger btnDangerWide btnDelWide"
+                  onClick={() => deleteRow(r)}
+                  disabled={!!r.__saving || !!r.__deleting}
+                  title="Eliminar (por listing_link)"
+                >
+                  {r.__deleting ? "Eliminando…" : "Eliminar (-)"}
                 </button>
               </div>
             </div>
@@ -594,7 +629,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               <th className="colLink">Link</th>
               <th className="colIcon">Preview</th>
               <th className="colSave">Guardar</th>
-              <th className="colDel">-</th>
+              <th className="colDel">Del</th>
             </tr>
           </thead>
 
@@ -689,6 +724,25 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        @media (max-width: 480px) {
+          .btnDelWide {
+            display: inline-flex;
+          }
+          .btnDelShort {
+            display: none;
+          }
+        }
+        @media (min-width: 481px) {
+          .btnDelWide {
+            display: none;
+          }
+          .btnDelShort {
+            display: inline-flex;
+          }
+        }
+      `}</style>
     </>
   );
 }
