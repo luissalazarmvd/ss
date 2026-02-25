@@ -17,19 +17,25 @@ export default async function Page() {
     .order("place", { ascending: true });
 
   return (
-    <main>
-      <h1 style={{ margin: "0 0 12px 0" }}>Viaje: stays + actividades</h1>
+    <main
+      style={{
+        maxWidth: 1100,
+        margin: "0 auto",
+        padding: "16px 14px 40px",
+      }}
+    >
+      <h1 style={{ margin: "0 0 12px 0", textAlign: "center" }}>Viaje: stays + actividades</h1>
 
       {(staysErr || actErr) && (
-        <pre style={{ background: "#fee", padding: 12, borderRadius: 8 }}>
+        <pre style={{ background: "#fee", padding: 12, borderRadius: 8, overflowX: "auto" }}>
           {JSON.stringify({ staysErr, actErr }, null, 2)}
         </pre>
       )}
 
-      <h2 style={{ marginTop: 24 }}>Hospedajes</h2>
+      <h2 style={{ marginTop: 24, textAlign: "center" }}>Hospedajes</h2>
       <StaysTable rows={stays ?? []} />
 
-      <h2 style={{ marginTop: 24 }}>Actividades</h2>
+      <h2 style={{ marginTop: 24, textAlign: "center" }}>Actividades</h2>
       <ActivitiesTable rows={activities ?? []} />
     </main>
   );
