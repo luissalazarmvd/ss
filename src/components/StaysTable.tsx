@@ -1,7 +1,7 @@
 // src/components/StaysTable.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type StayRow = {
   place: string;
@@ -20,6 +20,7 @@ type UIStayRow = StayRow & {
   __error?: string | null;
   __link_input?: string;
   __deleting?: boolean;
+  __confirm_delete?: boolean;
 };
 
 const PLACES = ["Pozuzo", "Oxapampa"] as const;
@@ -105,6 +106,20 @@ function AirbnbEmbed({
 export default function StaysTable({ rows }: { rows: StayRow[] }) {
   const [data, setData] = useState<UIStayRow[]>([]);
   const [openEmbedForKey, setOpenEmbedForKey] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const confirmTimersRef = useRef<Record<string, any>>({});
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 480px)");
+    const apply = () => setIsMobile(!!mq.matches);
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
 
   useEffect(() => {
     setData(
@@ -118,6 +133,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
         __deleting: false,
         __error: null,
         __link_input: "",
+        __confirm_delete: false,
       }))
     );
   }, [rows]);
@@ -142,13 +158,18 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
       __deleting: false,
       __error: null,
       __link_input: "",
+      __confirm_delete: false,
     };
 
     setData((prev) => [newRow, ...prev]);
   };
 
   const updateLocal = (key: string, patch: Partial<UIStayRow>) => {
-    setData((prev) => prev.map((r) => (r.__key === key ? { ...r, ...patch, __error: null } : r)));
+    setData((prev) =>
+      prev.map((r) =>
+        r.__key === key ? { ...r, ...patch, __error: null, __confirm_delete: patch.__confirm_delete ?? r.__confirm_delete } : r
+      )
+    );
   };
 
   const applyLinkInputToRow = (row: UIStayRow): UIStayRow => {
@@ -165,6 +186,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
       __error: null,
       listing_link: rowToSave.listing_link,
       __link_input: rowToSave.__link_input,
+      __confirm_delete: false,
     });
 
     const payload = {
@@ -199,9 +221,10 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
         check_out_date: toISODate(payload.row.check_out_date),
         total_price: Number(payload.row.total_price),
         __link_input: "",
+        __confirm_delete: false,
       });
     } catch (e: any) {
-      updateLocal(row.__key, { __saving: false, __error: e?.message || "Error guardando" });
+      updateLocal(row.__key, { __saving: false, __error: e?.message || "Error guardando", __confirm_delete: false });
     }
   };
 
@@ -210,12 +233,13 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
     const orig = (row.__orig_link ?? "").trim();
 
     const id = link || orig;
+
+    updateLocal(row.__key, { __deleting: true, __error: null, __confirm_delete: false });
+
     if (!id) {
       setData((prev) => prev.filter((r) => r.__key !== row.__key));
       return;
     }
-
-    updateLocal(row.__key, { __deleting: true, __error: null });
 
     try {
       const res = await fetch("/api/stays/delete", {
@@ -230,8 +254,28 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
       setData((prev) => prev.filter((r) => r.__key !== row.__key));
       if (openEmbedForKey === row.__key) setOpenEmbedForKey(null);
     } catch (e: any) {
-      updateLocal(row.__key, { __deleting: false, __error: e?.message || "Error eliminando" });
+      updateLocal(row.__key, { __deleting: false, __error: e?.message || "Error eliminando", __confirm_delete: false });
     }
+  };
+
+  const askDelete = (row: UIStayRow) => {
+    if (row.__saving || row.__deleting) return;
+
+    if (row.__confirm_delete) {
+      deleteRow(row);
+      return;
+    }
+
+    const key = row.__key;
+
+    if (confirmTimersRef.current[key]) clearTimeout(confirmTimersRef.current[key]);
+
+    updateLocal(key, { __confirm_delete: true });
+
+    confirmTimersRef.current[key] = setTimeout(() => {
+      updateLocal(key, { __confirm_delete: false });
+      confirmTimersRef.current[key] = null;
+    }, 4000);
   };
 
   return (
@@ -462,7 +506,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
             grid-template-columns: 1fr 1fr 1fr;
           }
           .dateNarrow :global(input[type="date"]) {
-            padding: 8px 8px;
+            padding: 10px 10px;
           }
           .linkLine {
             display: block;
@@ -520,7 +564,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               <div className="grid2">
                 <div className="field">
                   <label>Lugar</label>
-                  <select className="select" value={r.place} onChange={(e) => updateLocal(r.__key, { place: e.target.value })}>
+                  <select className="select" value={r.place} onChange={(e) => updateLocal(r.__key, { place: e.target.value, __confirm_delete: false })}>
                     {PLACES.map((p) => (
                       <option key={p} value={p}>
                         {p}
@@ -531,29 +575,60 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
 
                 <div className="field">
                   <label>Total (S/.)</label>
-                  <input className="input" type="number" inputMode="decimal" step="0.01" value={Number(r.total_price)} onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0) })} />
+                  <input
+                    className="input"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={Number(r.total_price)}
+                    onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0), __confirm_delete: false })}
+                  />
                 </div>
               </div>
 
               <div className="grid2">
                 <div className="field dateNarrow">
                   <label>Check In</label>
-                  <input className="input" type="date" value={toISODate(r.check_in_date)} onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value })} />
+                  <input
+                    className="input"
+                    type="date"
+                    value={toISODate(r.check_in_date)}
+                    onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value, __confirm_delete: false })}
+                  />
                 </div>
                 <div className="field dateNarrow">
                   <label>Check Out</label>
-                  <input className="input" type="date" value={toISODate(r.check_out_date)} onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value })} />
+                  <input
+                    className="input"
+                    type="date"
+                    value={toISODate(r.check_out_date)}
+                    onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value, __confirm_delete: false })}
+                  />
                 </div>
               </div>
 
               <div className="grid3">
                 <div className="field">
                   <label>#Cuartos</label>
-                  <input className="input" type="number" inputMode="numeric" step="1" value={r.rooms ?? ""} onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value) })} />
+                  <input
+                    className="input"
+                    type="number"
+                    inputMode="numeric"
+                    step="1"
+                    value={r.rooms ?? ""}
+                    onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value), __confirm_delete: false })}
+                  />
                 </div>
                 <div className="field">
                   <label>#Camas</label>
-                  <input className="input" type="number" inputMode="numeric" step="1" value={r.beds ?? ""} onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value) })} />
+                  <input
+                    className="input"
+                    type="number"
+                    inputMode="numeric"
+                    step="1"
+                    value={r.beds ?? ""}
+                    onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value), __confirm_delete: false })}
+                  />
                 </div>
                 <div className="field">
                   <label>C/U (S/.)</label>
@@ -564,7 +639,12 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               <div className="field" style={{ marginTop: 10 }}>
                 <label>Link</label>
                 <div className="linkLine">
-                  <input className="input" placeholder="Pega link aquí…" value={r.__link_input ?? ""} onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value })} />
+                  <input
+                    className="input"
+                    placeholder="Pega link aquí…"
+                    value={r.__link_input ?? ""}
+                    onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })}
+                  />
                   <button className="btn btnIcon" onClick={() => setOpenEmbedForKey(r.__key)} disabled={!id} title={!id ? "No hay link guardado para preview" : "Ver preview"}>
                     🔎
                   </button>
@@ -587,25 +667,23 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                 </div>
               )}
 
+              {isMobile && id && (
+                <div style={{ marginTop: 12 }}>
+                  <AirbnbEmbed listingId={id} checkIn={r.check_in_date} checkOut={r.check_out_date} adults={4} />
+                </div>
+              )}
+
               <div className="rowActions">
                 <button className="btn btnPrimary" onClick={() => saveRow(r)} disabled={!!r.__saving || !!r.__deleting}>
                   {r.__saving ? "Guardando…" : "Guardar"}
                 </button>
-                <button
-                  className="btn btnDanger btnIcon btnDelShort"
-                  onClick={() => deleteRow(r)}
-                  disabled={!!r.__saving || !!r.__deleting}
-                  title="Eliminar (por listing_link)"
-                >
-                  {r.__deleting ? "…" : "-"}
+
+                <button className="btn btnDanger btnIcon btnDelShort" onClick={() => askDelete(r)} disabled={!!r.__saving || !!r.__deleting} title="Eliminar">
+                  {r.__deleting ? "…" : r.__confirm_delete ? "?" : "-"}
                 </button>
-                <button
-                  className="btn btnDanger btnDangerWide btnDelWide"
-                  onClick={() => deleteRow(r)}
-                  disabled={!!r.__saving || !!r.__deleting}
-                  title="Eliminar (por listing_link)"
-                >
-                  {r.__deleting ? "Eliminando…" : "Eliminar (-)"}
+
+                <button className="btn btnDanger btnDangerWide btnDelWide" onClick={() => askDelete(r)} disabled={!!r.__saving || !!r.__deleting} title="Eliminar">
+                  {r.__deleting ? "Eliminando…" : r.__confirm_delete ? "Segura loca?" : "Eliminar (-)"}
                 </button>
               </div>
             </div>
@@ -641,7 +719,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               return (
                 <tr key={r.__key}>
                   <td className="colLugar">
-                    <select className="select" value={r.place} onChange={(e) => updateLocal(r.__key, { place: e.target.value })}>
+                    <select className="select" value={r.place} onChange={(e) => updateLocal(r.__key, { place: e.target.value, __confirm_delete: false })}>
                       {PLACES.map((p) => (
                         <option key={p} value={p}>
                           {p}
@@ -651,15 +729,32 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   </td>
 
                   <td className="colDate">
-                    <input className="input" type="date" value={toISODate(r.check_in_date)} onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value })} />
+                    <input
+                      className="input"
+                      type="date"
+                      value={toISODate(r.check_in_date)}
+                      onChange={(e) => updateLocal(r.__key, { check_in_date: e.target.value, __confirm_delete: false })}
+                    />
                   </td>
 
                   <td className="colDate">
-                    <input className="input" type="date" value={toISODate(r.check_out_date)} onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value })} />
+                    <input
+                      className="input"
+                      type="date"
+                      value={toISODate(r.check_out_date)}
+                      onChange={(e) => updateLocal(r.__key, { check_out_date: e.target.value, __confirm_delete: false })}
+                    />
                   </td>
 
                   <td className="colMoney">
-                    <input className="input" type="number" inputMode="decimal" step="0.01" value={Number(r.total_price)} onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0) })} />
+                    <input
+                      className="input"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      value={Number(r.total_price)}
+                      onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0), __confirm_delete: false })}
+                    />
                   </td>
 
                   <td className="colPP" style={{ color: "#2a5e3b", fontWeight: 900 }}>
@@ -667,15 +762,34 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   </td>
 
                   <td className="colRooms">
-                    <input className="input" type="number" inputMode="numeric" step="1" value={r.rooms ?? ""} onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value) })} />
+                    <input
+                      className="input"
+                      type="number"
+                      inputMode="numeric"
+                      step="1"
+                      value={r.rooms ?? ""}
+                      onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value), __confirm_delete: false })}
+                    />
                   </td>
 
                   <td className="colBeds">
-                    <input className="input" type="number" inputMode="numeric" step="1" value={r.beds ?? ""} onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value) })} />
+                    <input
+                      className="input"
+                      type="number"
+                      inputMode="numeric"
+                      step="1"
+                      value={r.beds ?? ""}
+                      onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value), __confirm_delete: false })}
+                    />
                   </td>
 
                   <td className="colLink">
-                    <input className="input" placeholder="Pega…" value={r.__link_input ?? ""} onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value })} />
+                    <input
+                      className="input"
+                      placeholder="Pega…"
+                      value={r.__link_input ?? ""}
+                      onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })}
+                    />
                     {r.__error ? <div style={{ marginTop: 6, color: "#7a1020", fontWeight: 900 }}>{r.__error}</div> : null}
                   </td>
 
@@ -692,8 +806,8 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   </td>
 
                   <td className="colDel">
-                    <button className="btn btnDanger btnIcon" onClick={() => deleteRow(r)} disabled={!!r.__saving || !!r.__deleting} title="Eliminar (por listing_link)">
-                      {r.__deleting ? "…" : "-"}
+                    <button className="btn btnDanger btnIcon" onClick={() => askDelete(r)} disabled={!!r.__saving || !!r.__deleting} title="Eliminar">
+                      {r.__deleting ? "…" : r.__confirm_delete ? "?" : "-"}
                     </button>
                   </td>
                 </tr>
