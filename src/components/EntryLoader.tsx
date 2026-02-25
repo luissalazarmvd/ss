@@ -30,11 +30,14 @@ export default function EntryLoader({ durationMs = 1400 }: { durationMs?: number
           display: grid;
           place-items: center;
           gap: 10px;
+          width: 100%;
+          padding: 0 14px;
         }
 
-        .anim {
-          width: 96px;
-          height: 96px;
+        /* Contenedor responsivo: respeta ratio (Image con height:auto) */
+        .imgBox {
+          width: min(320px, calc(100vw - 28px)); /* iPhone: no se sale */
+          height: auto;
           animation: wobbleSpin 1.2s ease-in-out 1;
           transform-origin: center;
         }
@@ -64,10 +67,11 @@ export default function EntryLoader({ durationMs = 1400 }: { durationMs?: number
           font-weight: 900;
           color: #1f5132;
           opacity: 0.9;
+          text-align: center;
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .anim {
+          .imgBox {
             animation: none;
           }
         }
@@ -75,8 +79,15 @@ export default function EntryLoader({ durationMs = 1400 }: { durationMs?: number
 
       <div className="overlay" aria-label="Cargando">
         <div className="wrap">
-          <div className="anim">
-            <Image src="/loading.png" alt="loading" width={96} height={96} priority />
+          <div className="imgBox">
+            <Image
+              src="/loading.png"
+              alt="loading"
+              width={1200}              /* “base” grande, no importa */
+              height={1200}             /* se conserva ratio */
+              style={{ width: "100%", height: "auto" }}  /* <- respeta ratio y escala */
+              priority
+            />
           </div>
           <div className="txt">Cargando…</div>
         </div>
