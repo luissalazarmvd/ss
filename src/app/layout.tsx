@@ -43,21 +43,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             background-image: url("/pattern.png");
             background-repeat: no-repeat;
             background-size: cover;
-            animation: tileDance var(--loop) linear infinite;
+            animation: tileHeadbang var(--loop) steps(1, end) infinite;
             will-change: transform;
           }
 
           /* “baila en su lugar” con acentos por beat (0,2,4,6) */
-          @keyframes tileDance{
-            0%      { transform: translate(0px, 0px) rotate(0deg) scale(1); }
-            12.5%   { transform: translate(2px, -2px) rotate(1.2deg) scale(1.01); }
-            25%     { transform: translate(0px, 0px) rotate(0deg) scale(1); }
-            37.5%   { transform: translate(-2px, 2px) rotate(-1.2deg) scale(1.01); }
-            50%     { transform: translate(0px, 0px) rotate(0deg) scale(1); }
-            62.5%   { transform: translate(2px, 1px) rotate(0.8deg) scale(1.01); }
-            75%     { transform: translate(0px, 0px) rotate(0deg) scale(1); }
-            87.5%   { transform: translate(-2px, -1px) rotate(-0.8deg) scale(1.01); }
-            100%    { transform: translate(0px, 0px) rotate(0deg) scale(1); }
+          @keyframes tileHeadbang{
+            /* 8 beats (0,12.5,25,...,100) con golpes fuertes */
+            0%    { transform: translate(0px, 0px) rotate(0deg)   scale(1); }
+            12.5% { transform: translate(0px, 2px) rotate(8deg)   scale(1.02); }
+            25%   { transform: translate(0px, -6px) rotate(-14deg) scale(1.03); }
+            37.5% { transform: translate(0px, 3px) rotate(10deg)  scale(1.02); }
+            50%   { transform: translate(0px, -7px) rotate(-16deg) scale(1.03); }
+            62.5% { transform: translate(0px, 2px) rotate(9deg)   scale(1.02); }
+            75%   { transform: translate(0px, -6px) rotate(-14deg) scale(1.03); }
+            87.5% { transform: translate(0px, 2px) rotate(8deg)   scale(1.02); }
+            100%  { transform: translate(0px, 0px) rotate(0deg)   scale(1); }
           }
 
           /* contenido encima */
