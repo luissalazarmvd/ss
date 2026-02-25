@@ -5,43 +5,46 @@ import React, { useEffect, useRef, useState } from "react";
 export default function BgAudio() {
   const ref = useRef<HTMLAudioElement | null>(null);
 
-  const [isOn, setIsOn] = useState(false);       // está sonando
+  const [muted, setMuted] = useState(true);      // inicia muteado
   const [blocked, setBlocked] = useState(false); // autoplay bloqueado
 
-  const play = async () => {
+  const ensurePlaying = async () => {
     const a = ref.current;
     if (!a) return;
     try {
       await a.play();
-      setIsOn(true);
       setBlocked(false);
     } catch {
-      setIsOn(false);
       setBlocked(true);
     }
   };
 
-  const pause = () => {
+  const toggle = async () => {
     const a = ref.current;
     if (!a) return;
-    a.pause();
-    setIsOn(false);
-  };
 
-  const toggle = async () => {
-    if (isOn) {
-      pause();
-    } else {
-      await play();
-    }
+    const next = !muted;
+    setMuted(next);
+    a.muted = next;
+
+    // si está desmuteando, asegúrate que esté reproduciendo
+    if (!next) await ensurePlaying();
   };
 
   useEffect(() => {
-    // intenta autoplay al cargar (puede fallar)
-    play();
+    const a = ref.current;
+    if (!a) return;
 
-    // primer gesto del usuario = intenta arrancar
-    const onFirstGesture = () => play();
+    a.loop = true;
+    a.preload = "auto";
+    a.muted = true; // clave para que iOS deje autoplay
+    setMuted(true);
+
+    // intenta arrancar en mute
+    ensurePlaying();
+
+    // primer gesto del usuario: ya puede quedar sonando, y si desmuteas, suena
+    const onFirstGesture = () => ensurePlaying();
     window.addEventListener("pointerdown", onFirstGesture, { passive: true });
     window.addEventListener("keydown", onFirstGesture);
 
@@ -54,7 +57,7 @@ export default function BgAudio() {
 
   return (
     <>
-      <audio ref={ref} src="/audio.mp3" loop preload="auto" />
+      <audio ref={ref} src="/audio.mp3" />
 
       <button
         onClick={toggle}
@@ -64,16 +67,16 @@ export default function BgAudio() {
           right: 10,
           zIndex: 10000,
           border: "1px solid #1f5132",
-          background: isOn ? "#1f5132" : "#e8f6ee",
-          color: isOn ? "#e8f6ee" : "#1f5132",
+          background: !muted ? "#1f5132" : "#e8f6ee",
+          color: !muted ? "#e8f6ee" : "#1f5132",
           fontWeight: 900,
           padding: "10px 12px",
           borderRadius: 12,
           cursor: "pointer",
         }}
-        title={isOn ? "Mutear" : "Activar audio"}
+        title={!muted ? "Mutear" : "Activar audio"}
       >
-        {isOn ? "🔊 Audio" : "🔇 Audio"}
+        {!muted ? "🔊 Audio" : "🔇 Audio"}
         {blocked ? " (tap)" : ""}
       </button>
     </>
