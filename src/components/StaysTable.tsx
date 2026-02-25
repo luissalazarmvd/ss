@@ -110,7 +110,7 @@ function AirbnbEmbed({
       className="airbnb-embed-frame"
       data-id={listingId}
       data-view="home"
-      data-hide-price="true"
+      data-hide-price="false"
       style={{ width, height, margin: "0 auto" }}
     >
       <a href={embedHref} target="_blank" rel="noreferrer">
