@@ -622,15 +622,27 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
 
               <div className="field" style={{ marginTop: 10 }}>
                 <label>Link</label>
+
                 <div className="linkLine">
-                  <input className="input" placeholder="Pega link aquí…" value={r.__link_input ?? ""} onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })} />
-                  <button className="btn btnIcon" onClick={() => setOpenEmbedForKey(r.__key)} disabled={!id} title={!id ? "No hay link guardado para preview" : "Ver preview"}>
+                  <input
+                    className="input"
+                    placeholder="Pega link aquí…"
+                    value={r.__link_input ?? ""}
+                    onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })}
+                  />
+                  <button
+                    className="btn btnIcon"
+                    onClick={() => setOpenEmbedForKey(r.__key)}
+                    disabled={!id}
+                    title={!id ? "No hay link guardado para preview" : "Ver preview"}
+                  >
                     🔎
                   </button>
                 </div>
 
-                <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", justifyContent: "center" }}>
-                  {r.listing_link ? (
+                {/* EN IPHONE: NO MOSTRAR el https://... para que no rompa el ancho */}
+                {r.listing_link ? (
+                  <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
                     <a
                       className="muted"
                       href={r.listing_link}
@@ -640,19 +652,17 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                         fontWeight: 900,
                         textDecoration: "none",
                         borderBottom: "2px solid rgba(31,81,50,.25)",
-                        maxWidth: "100%",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        display: "inline-block",
+                        paddingBottom: 2,
                       }}
                     >
-                      {r.listing_link}
+                      Abrir en Airbnb
                     </a>
-                  ) : (
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
                     <span className="muted">Sin link guardado (Preview no disponible)</span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {r.__error && (
