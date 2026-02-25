@@ -635,7 +635,7 @@ export default function StaysTable() {
       <div className="topbar">
         <div>
           <div style={{ fontWeight: 900, fontSize: 18, color: "#1f5132" }}>Stays</div>
-          <div className="muted">Edita cualquier fila y guarda. “+” crea una nueva. “-” elimina por link.</div>
+          <div className="muted">Edita cualquier fila y guarda. “+” crea una nueva. “-” elimina. Gabso gay</div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
