@@ -23,6 +23,8 @@ type UIStayRow = StayRow & {
   __confirm_delete?: boolean;
 };
 
+type ListResp = { ok: boolean; rows: StayRow[]; error?: string };
+
 const PLACES = ["Pozuzo", "Oxapampa"] as const;
 
 function toISODate(v: any) {
@@ -103,30 +105,91 @@ function AirbnbEmbed({
   );
 }
 
-export default function StaysTable({ rows }: { rows: StayRow[] }) {
+function mapToUI(rows: StayRow[]) {
+  return (rows ?? []).map((r, idx) => ({
+    ...r,
+    check_in_date: toISODate(r.check_in_date),
+    check_out_date: toISODate(r.check_out_date),
+    __key: `${r.listing_link ?? "no-link"}-${idx}-${Math.random().toString(16).slice(2)}`,
+    __orig_link: r.listing_link ?? null,
+    __saving: false,
+    __deleting: false,
+    __error: null,
+    __link_input: "",
+    __confirm_delete: false,
+  }));
+}
+
+async function fetchStaysNoCache(): Promise<StayRow[]> {
+  const url = `/api/stays/list?t=${Date.now()}`;
+  const res = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+      Pragma: "no-cache",
+    },
+  });
+
+  const j: ListResp = await res.json().catch(() => ({ ok: false, rows: [], error: "Respuesta inválida" } as any));
+  if (!res.ok || !j?.ok) throw new Error(j?.error || `Error cargando (HTTP ${res.status})`);
+  return j.rows ?? [];
+}
+
+export default function StaysTable() {
   const [data, setData] = useState<UIStayRow[]>([]);
   const [openEmbedForKey, setOpenEmbedForKey] = useState<string | null>(null);
-  const confirmTimersRef = useRef<Record<string, any>>({});
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setData(
-      (rows ?? []).map((r, idx) => ({
-        ...r,
-        check_in_date: toISODate(r.check_in_date),
-        check_out_date: toISODate(r.check_out_date),
-        __key: `${r.listing_link ?? "no-link"}-${idx}-${Math.random().toString(16).slice(2)}`,
-        __orig_link: r.listing_link ?? null,
-        __saving: false,
-        __deleting: false,
-        __error: null,
-        __link_input: "",
-        __confirm_delete: false,
-      }))
-    );
-  }, [rows]);
+  const confirmTimersRef = useRef<Record<string, any>>({});
+  const aliveRef = useRef(true);
+  const refreshInFlightRef = useRef(false);
 
   const openRow = useMemo(() => data.find((r) => r.__key === openEmbedForKey) ?? null, [data, openEmbedForKey]);
   const embedId = useMemo(() => getAirbnbId(openRow?.listing_link ?? null), [openRow?.listing_link]);
+
+  const refresh = async (opts?: { silent?: boolean }) => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+
+    if (!opts?.silent) {
+      setLoading(true);
+      setLoadError(null);
+    }
+
+    try {
+      const rows = await fetchStaysNoCache();
+      if (!aliveRef.current) return;
+      setData(mapToUI(rows));
+      setLoadError(null);
+    } catch (e: any) {
+      if (!aliveRef.current) return;
+      setLoadError(e?.message || "Error cargando");
+    } finally {
+      if (!aliveRef.current) return;
+      setLoading(false);
+      refreshInFlightRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    aliveRef.current = true;
+    refresh();
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") refresh({ silent: true });
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    const t = setInterval(() => refresh({ silent: true }), 45000);
+
+    return () => {
+      aliveRef.current = false;
+      document.removeEventListener("visibilitychange", onVis);
+      clearInterval(t);
+    };
+  }, []);
 
   const addRow = () => {
     const iso = new Date().toISOString().slice(0, 10);
@@ -216,26 +279,21 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
     };
 
     try {
-      const res = await fetch("/api/stays/save", {
+      const res = await fetch(`/api/stays/save?t=${Date.now()}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+          Pragma: "no-cache",
+        },
         body: JSON.stringify(payload),
       });
 
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j?.ok) throw new Error(j?.error || `Error guardando (HTTP ${res.status})`);
 
-      updateLocal(row.__key, {
-        __saving: false,
-        __error: null,
-        __orig_link: payload.row.listing_link ?? null,
-        listing_link: payload.row.listing_link ?? null,
-        check_in_date: toISODate(payload.row.check_in_date),
-        check_out_date: toISODate(payload.row.check_out_date),
-        total_price: Number(payload.row.total_price),
-        __link_input: "",
-        __confirm_delete: false,
-      });
+      await refresh({ silent: true });
     } catch (e: any) {
       updateLocal(row.__key, { __saving: false, __error: e?.message || "Error guardando", __confirm_delete: false });
     }
@@ -254,17 +312,22 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
     }
 
     try {
-      const res = await fetch("/api/stays/delete", {
+      const res = await fetch(`/api/stays/delete?t=${Date.now()}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+          Pragma: "no-cache",
+        },
         body: JSON.stringify({ listing_link: id }),
       });
 
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j?.ok) throw new Error(j?.error || `Error eliminando (HTTP ${res.status})`);
 
-      setData((prev) => prev.filter((r) => r.__key !== row.__key));
       if (openEmbedForKey === row.__key) setOpenEmbedForKey(null);
+      await refresh({ silent: true });
     } catch (e: any) {
       updateLocal(row.__key, { __deleting: false, __error: e?.message || "Error eliminando", __confirm_delete: false });
     }
@@ -575,10 +638,32 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           <div className="muted">Edita cualquier fila y guarda. “+” crea una nueva. “-” elimina por link.</div>
         </div>
 
-        <button className="btn btnPrimary btnIcon" onClick={addRow} title="Agregar fila">
-          +
-        </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button className="btn" onClick={() => refresh()} disabled={loading} title="Actualizar">
+            {loading ? "Cargando…" : "Refrescar"}
+          </button>
+          <button className="btn btnPrimary btnIcon" onClick={addRow} title="Agregar fila">
+            +
+          </button>
+        </div>
       </div>
+
+      {loadError ? (
+        <div
+          style={{
+            marginBottom: 12,
+            background: "#fee",
+            border: "1px solid #f5c2c2",
+            padding: 10,
+            borderRadius: 12,
+            color: "#7a1020",
+            fontWeight: 900,
+            textAlign: "center",
+          }}
+        >
+          {loadError}
+        </div>
+      ) : null}
 
       <div className="cards">
         {data.map((r) => {
@@ -656,12 +741,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                     value={r.__link_input ?? ""}
                     onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })}
                   />
-                  <button
-                    className="btn btnIcon"
-                    onClick={() => setOpenEmbedForKey(r.__key)}
-                    disabled={!id}
-                    title={!id ? "No hay link guardado para preview" : "Ver preview"}
-                  >
+                  <button className="btn btnIcon" onClick={() => setOpenEmbedForKey(r.__key)} disabled={!id} title={!id ? "No hay link guardado para preview" : "Ver preview"}>
                     🔎
                   </button>
                 </div>
@@ -719,7 +799,8 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           );
         })}
 
-        {!data.length && <div className="muted">No hay filas en stays.</div>}
+        {!data.length && !loading && <div className="muted">No hay filas en stays.</div>}
+        {loading && !data.length && <div className="muted">Cargando…</div>}
       </div>
 
       <div className="tableWrap">
@@ -807,10 +888,18 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               );
             })}
 
-            {!data.length && (
+            {!data.length && !loading && (
               <tr>
                 <td colSpan={11} style={{ padding: 10 }}>
                   No hay filas en stays.
+                </td>
+              </tr>
+            )}
+
+            {loading && !data.length && (
+              <tr>
+                <td colSpan={11} style={{ padding: 10 }}>
+                  Cargando…
                 </td>
               </tr>
             )}

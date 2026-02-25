@@ -2,10 +2,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 
 type ActivityRow = {
-  id?: string | number;
+  id?: string | number | null;
   place: string;
   activity_date: string;
   activity: string;
@@ -16,6 +15,9 @@ type UIActivityRow = ActivityRow & {
   __key: string;
   __deleting?: boolean;
 };
+
+type ListResp = { ok: boolean; rows: ActivityRow[]; error?: string };
+type ApiResp = { ok: boolean; error?: string };
 
 const PLACES = ["Viaje", "Pozuzo", "Oxapampa"] as const;
 const DATE_OPTIONS = ["2026-04-02", "2026-04-03", "2026-04-04", "2026-04-05"] as const;
@@ -32,38 +34,60 @@ function moveItem<T>(arr: T[], from: number, to: number) {
   return a;
 }
 
-export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
-  const router = useRouter();
+function isValidId(id: any) {
+  if (id === undefined || id === null) return false;
+  const s = String(id).trim();
+  return s.length > 0 && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined";
+}
 
+function sortRows(a: UIActivityRow, b: UIActivityRow) {
+  const da = a.activity_date.localeCompare(b.activity_date);
+  if (da !== 0) return da;
+  const oa = Number(a.order_no ?? 1e9);
+  const ob = Number(b.order_no ?? 1e9);
+  if (oa !== ob) return oa - ob;
+  return String(a.__key).localeCompare(String(b.__key));
+}
+
+function mapToUI(rows: ActivityRow[]) {
+  const mapped: UIActivityRow[] = (rows ?? [])
+    .map((r, idx) => ({
+      ...r,
+      activity_date: toISODate(r.activity_date),
+      __key: isValidId((r as any).id) ? String((r as any).id) : `row-${idx}-${Math.random().toString(16).slice(2)}`,
+      __deleting: false,
+    }))
+    .filter((r) => DATE_OPTIONS.includes(r.activity_date as any))
+    .sort(sortRows);
+
+  return mapped;
+}
+
+async function fetchActivitiesNoCache(): Promise<ActivityRow[]> {
+  const res = await fetch(`/api/activities/list?t=${Date.now()}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+      Pragma: "no-cache",
+    },
+  });
+
+  const j: ListResp = await res.json().catch(() => ({ ok: false, rows: [], error: "Respuesta inválida" } as any));
+  if (!res.ok || !j?.ok) throw new Error(j?.error || `Error cargando (HTTP ${res.status})`);
+  return j.rows ?? [];
+}
+
+export default function ActivitiesTable() {
   const [uiRows, setUiRows] = useState<UIActivityRow[]>([]);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
   const drag = useRef<{ key: string | null; date: string | null }>({ key: null, date: null });
-
-  useEffect(() => {
-    const mapped: UIActivityRow[] = (rows ?? [])
-      .map((r, idx) => ({
-        ...r,
-        activity_date: toISODate(r.activity_date),
-        __key: String((r as any).id ?? `row-${idx}-${Math.random().toString(16).slice(2)}`),
-        __deleting: false,
-      }))
-      .filter((r) => DATE_OPTIONS.includes(r.activity_date as any))
-      .sort((a, b) => {
-        const da = a.activity_date.localeCompare(b.activity_date);
-        if (da !== 0) return da;
-        const oa = Number(a.order_no ?? 1e9);
-        const ob = Number(b.order_no ?? 1e9);
-        if (oa !== ob) return oa - ob;
-        return String(a.__key).localeCompare(String(b.__key));
-      });
-
-    setUiRows(mapped);
-    setErr(null);
-    setOkMsg(null);
-  }, [rows]);
+  const aliveRef = useRef(true);
+  const refreshInFlightRef = useRef(false);
 
   const grouped = useMemo(() => {
     const m = new Map<string, UIActivityRow[]>();
@@ -73,8 +97,52 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
       if (!m.has(d)) m.set(d, []);
       m.get(d)!.push(r);
     }
+    for (const d of DATE_OPTIONS) (m.get(d) ?? []).sort(sortRows);
     return DATE_OPTIONS.map((d) => [d, m.get(d) ?? []] as const);
   }, [uiRows]);
+
+  const refresh = async (opts?: { silent?: boolean }) => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+
+    if (!opts?.silent) {
+      setLoading(true);
+      setErr(null);
+      setOkMsg(null);
+    }
+
+    try {
+      const rows = await fetchActivitiesNoCache();
+      if (!aliveRef.current) return;
+      setUiRows(mapToUI(rows));
+      setErr(null);
+    } catch (e: any) {
+      if (!aliveRef.current) return;
+      setErr(e?.message || "Error cargando.");
+    } finally {
+      if (!aliveRef.current) return;
+      setLoading(false);
+      refreshInFlightRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    aliveRef.current = true;
+    refresh();
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") refresh({ silent: true });
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    const t = setInterval(() => refresh({ silent: true }), 45000);
+
+    return () => {
+      aliveRef.current = false;
+      document.removeEventListener("visibilitychange", onVis);
+      clearInterval(t);
+    };
+  }, []);
 
   const setCell = (key: string, patch: Partial<ActivityRow>) => {
     setUiRows((prev) => prev.map((r) => (r.__key === key ? { ...r, ...patch } : r)));
@@ -83,15 +151,19 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
   const addRowForDate = (date: string) => {
     const k = `new-${date}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     setUiRows((prev) => {
-      const next: UIActivityRow[] = [...prev, { __key: k, id: undefined, order_no: null, activity_date: date, place: "Viaje", activity: "", __deleting: false }];
-      next.sort((a, b) => {
-        const da = a.activity_date.localeCompare(b.activity_date);
-        if (da !== 0) return da;
-        const oa = Number(a.order_no ?? 1e9);
-        const ob = Number(b.order_no ?? 1e9);
-        if (oa !== ob) return oa - ob;
-        return String(a.__key).localeCompare(String(b.__key));
-      });
+      const next: UIActivityRow[] = [
+        ...prev,
+        {
+          __key: k,
+          id: undefined,
+          order_no: null,
+          activity_date: date,
+          place: "Viaje",
+          activity: "",
+          __deleting: false,
+        },
+      ];
+      next.sort(sortRows);
       return next;
     });
   };
@@ -105,13 +177,6 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
       }
     }
     return null;
-  };
-
-  const refreshHard = async () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("_ts", String(Date.now()));
-    window.history.replaceState({}, "", url.toString());
-    router.refresh();
   };
 
   const saveAll = async () => {
@@ -129,28 +194,35 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
       const out: any[] = [];
       for (const [d, items] of grouped) {
         items.forEach((r, idx) => {
-          out.push({
-            id: r.id,
+          const base = {
             place: r.place,
             activity_date: d,
             activity: r.activity,
             order_no: idx + 1,
-          });
+          } as any;
+
+          if (isValidId(r.id)) base.id = r.id;
+
+          out.push(base);
         });
       }
 
-      const resp = await fetch(`/api/activities/save?_ts=${Date.now()}`, {
+      const resp = await fetch(`/api/activities/save?t=${Date.now()}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+          Pragma: "no-cache",
+        },
         cache: "no-store",
         body: JSON.stringify({ rows: out }),
       });
 
-      const data = await resp.json().catch(() => null);
+      const data: ApiResp | null = await resp.json().catch(() => null);
       if (!resp.ok || !data?.ok) throw new Error(data?.error || `Error guardando (HTTP ${resp.status})`);
 
       setOkMsg("Guardado OK.");
-      await refreshHard();
+      await refresh({ silent: true });
     } catch (e: any) {
       setErr(e?.message || "Error guardando.");
     } finally {
@@ -162,7 +234,7 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
     setErr(null);
     setOkMsg(null);
 
-    if (r.id === undefined || r.id === null || String(r.id).trim() === "") {
+    if (!isValidId(r.id)) {
       setUiRows((prev) => prev.filter((x) => x.__key !== r.__key));
       return;
     }
@@ -170,18 +242,21 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
     setUiRows((prev) => prev.map((x) => (x.__key === r.__key ? { ...x, __deleting: true } : x)));
 
     try {
-      const resp = await fetch(`/api/activities/delete?_ts=${Date.now()}`, {
+      const resp = await fetch(`/api/activities/delete?t=${Date.now()}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+          Pragma: "no-cache",
+        },
         cache: "no-store",
         body: JSON.stringify({ id: r.id }),
       });
 
-      const data = await resp.json().catch(() => null);
+      const data: ApiResp | null = await resp.json().catch(() => null);
       if (!resp.ok || !data?.ok) throw new Error(data?.error || `Error eliminando (HTTP ${resp.status})`);
 
-      setUiRows((prev) => prev.filter((x) => x.__key !== r.__key));
-      await refreshHard();
+      await refresh({ silent: true });
     } catch (e: any) {
       setUiRows((prev) => prev.map((x) => (x.__key === r.__key ? { ...x, __deleting: false } : x)));
       setErr(e?.message || "Error eliminando.");
@@ -417,6 +492,9 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button className="btn" onClick={() => refresh()} disabled={loading}>
+            {loading ? "Cargando…" : "Refrescar"}
+          </button>
           <button className="btn btnPrimary" onClick={saveAll} disabled={saving}>
             {saving ? "Guardando…" : "Guardar"}
           </button>
@@ -436,7 +514,7 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
               </button>
             </div>
 
-            {items.map((r, idx) => (
+            {items.map((r) => (
               <div key={r.__key} className="rowLine" data-rowkey={r.__key} data-date={d}>
                 <div className="dragHandle" onPointerDown={beginDrag(r.__key, d)} title="Arrastrar">
                   ≡
@@ -460,7 +538,7 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
 
             {!items.length && (
               <div style={{ padding: 12, color: "#2a5e3b", fontWeight: 800, opacity: 0.9 }}>
-                Sin actividades. Agrega con “+”.
+                {loading ? "Cargando…" : "Sin actividades. Agrega con “+”."}
               </div>
             )}
           </div>
