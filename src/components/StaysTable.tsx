@@ -252,6 +252,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           padding: 10px 12px;
           border-radius: 12px;
           cursor: pointer;
+          white-space: nowrap;
         }
         .btnPrimary {
           border: 1px solid #1f5132;
@@ -270,6 +271,12 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          padding: 0;
+        }
+        .btnSaveMini {
+          padding: 8px 10px;
+          border-radius: 12px;
+          min-width: 0;
         }
         .muted {
           color: #2a5e3b;
@@ -383,34 +390,38 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
         th {
           border-bottom: 1px solid rgba(31, 81, 50, 0.35);
           font-weight: 900;
+          white-space: nowrap;
         }
 
         .colLugar {
-          width: 140px;
-        }
-        .colDate {
-          width: 140px;
-        }
-        .colMoney {
           width: 130px;
         }
+        .colDate {
+          width: 132px;
+        }
+        .colMoney {
+          width: 108px;
+        }
         .colPP {
-          width: 110px;
+          width: 108px;
         }
-        .colSmall {
-          width: 95px;
-        }
-        .colLink {
-          width: 70px;
-        }
-        .colIcon {
+        .colRooms {
           width: 90px;
         }
+        .colBeds {
+          width: 82px;
+        }
+        .colLink {
+          width: 62px;
+        }
+        .colIcon {
+          width: 86px;
+        }
         .colSave {
-          width: 110px;
+          width: 88px;
         }
         .colDel {
-          width: 80px;
+          width: 56px;
         }
 
         @media (min-width: 950px) {
@@ -419,12 +430,23 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
           }
           .tableWrap {
             display: block;
-          }
-        }
-
-        @media (min-width: 950px) {
-          .tableWrap {
             overflow-x: hidden;
+          }
+          th,
+          td {
+            padding: 8px 6px;
+          }
+          .input,
+          .select {
+            padding: 8px 8px;
+          }
+          .btnSaveMini {
+            padding: 8px 9px;
+          }
+          .btnIcon {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
           }
         }
 
@@ -567,8 +589,8 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
               <th className="colDate">Check Out</th>
               <th className="colMoney">Total (S/.)</th>
               <th className="colPP">C/U (S/.)</th>
-              <th className="colSmall">#Cuartos</th>
-              <th className="colSmall">#Camas</th>
+              <th className="colRooms">#Cuartos</th>
+              <th className="colBeds">#Camas</th>
               <th className="colLink">Link</th>
               <th className="colIcon">Preview</th>
               <th className="colSave">Guardar</th>
@@ -609,16 +631,16 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                     {fmtMoney(perPerson)}
                   </td>
 
-                  <td className="colSmall">
+                  <td className="colRooms">
                     <input className="input" type="number" inputMode="numeric" step="1" value={r.rooms ?? ""} onChange={(e) => updateLocal(r.__key, { rooms: toNumOrNull(e.target.value) })} />
                   </td>
 
-                  <td className="colSmall">
+                  <td className="colBeds">
                     <input className="input" type="number" inputMode="numeric" step="1" value={r.beds ?? ""} onChange={(e) => updateLocal(r.__key, { beds: toNumOrNull(e.target.value) })} />
                   </td>
 
                   <td className="colLink">
-                    <input className="input" placeholder="Pega link…" value={r.__link_input ?? ""} onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value })} />
+                    <input className="input" placeholder="Pega…" value={r.__link_input ?? ""} onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value })} />
                     {r.__error ? <div style={{ marginTop: 6, color: "#7a1020", fontWeight: 900 }}>{r.__error}</div> : null}
                   </td>
 
@@ -629,7 +651,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   </td>
 
                   <td className="colSave">
-                    <button className="btn btnPrimary" onClick={() => saveRow(r)} disabled={!!r.__saving || !!r.__deleting}>
+                    <button className="btn btnPrimary btnSaveMini" onClick={() => saveRow(r)} disabled={!!r.__saving || !!r.__deleting}>
                       {r.__saving ? "…" : "Guardar"}
                     </button>
                   </td>
