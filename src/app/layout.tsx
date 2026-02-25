@@ -3,9 +3,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "SS - Viaje",
-};
+export const metadata: Metadata = { title: "SS - Viaje - Estaba aburrido" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -15,22 +13,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           fontFamily: "system-ui",
           margin: 0,
           padding: 16,
-          background: "#cfe9d7",
+          background: "#cfe9d7", // verde pastel base
         }}
       >
-        <img
-          src="/esquina.png"
-          alt=""
-          style={{
-            position: "fixed",
-            top: 10,
-            left: 10,
-            width: 38,
-            height: "auto",
-            zIndex: 9999,
-            pointerEvents: "none",
-          }}
-        />
+        {/* overlay repetido con transparencia */}
+        <style>{`
+          body::before{
+            content:"";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+
+            background-image: url("/pattern.png");
+            background-repeat: repeat;
+            background-size: 120px 120px; /* ajusta tamaño del tile */
+            opacity: 0.12;               /* ajusta transparencia */
+          }
+
+          /* asegura que tu contenido esté encima del overlay */
+          body > * { position: relative; z-index: 1; }
+        `}</style>
 
         <Script src="https://www.airbnb.com.pe/embeddable/airbnb_jssdk" strategy="afterInteractive" />
         {children}
