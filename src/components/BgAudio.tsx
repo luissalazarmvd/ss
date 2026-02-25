@@ -22,6 +22,7 @@ export default function BgAudio() {
   const toggle = async () => {
     const a = ref.current;
     if (!a) return;
+    a.volume = 0.7;
 
     const next = !muted;
     setMuted(next);
@@ -37,14 +38,23 @@ export default function BgAudio() {
 
     a.loop = true;
     a.preload = "auto";
-    a.muted = true; // clave para que iOS deje autoplay
+    a.volume = 0.7;
+    a.muted = true;
     setMuted(true);
 
     // intenta arrancar en mute
     ensurePlaying();
 
-    // primer gesto del usuario: ya puede quedar sonando, y si desmuteas, suena
-    const onFirstGesture = () => ensurePlaying();
+    // primer gesto: desmutea y deja audio ON
+    const onFirstGesture = async () => {
+      a.muted = false;
+      setMuted(false);
+      await ensurePlaying();
+
+      window.removeEventListener("pointerdown", onFirstGesture);
+      window.removeEventListener("keydown", onFirstGesture);
+    };
+
     window.addEventListener("pointerdown", onFirstGesture, { passive: true });
     window.addEventListener("keydown", onFirstGesture);
 
@@ -52,7 +62,6 @@ export default function BgAudio() {
       window.removeEventListener("pointerdown", onFirstGesture);
       window.removeEventListener("keydown", onFirstGesture);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
