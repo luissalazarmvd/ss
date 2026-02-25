@@ -9,6 +9,7 @@ type ActivityRow = {
   place: string;
   activity_date: string;
   activity: string;
+  order_no?: number | null;
 };
 
 type UIActivityRow = ActivityRow & {
@@ -16,29 +17,19 @@ type UIActivityRow = ActivityRow & {
   __deleting?: boolean;
 };
 
+const PLACES = ["Viaje", "Pozuzo", "Oxapampa"] as const;
+const DATE_OPTIONS = ["2026-04-02", "2026-04-03", "2026-04-04", "2026-04-05"] as const;
+
 function toISODate(v: any) {
   if (!v) return "";
   return String(v).slice(0, 10);
 }
 
-function sortByDateAsc(rows: UIActivityRow[]) {
-  const toTs = (s: string) => {
-    const x = toISODate(s);
-    if (!x) return Number.POSITIVE_INFINITY;
-    const t = Date.parse(x);
-    return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
-  };
-  return [...rows].sort((a, b) => {
-    const da = toTs(a.activity_date);
-    const db = toTs(b.activity_date);
-    if (da !== db) return da - db;
-    const pa = (a.place ?? "").toLowerCase();
-    const pb = (b.place ?? "").toLowerCase();
-    if (pa !== pb) return pa.localeCompare(pb);
-    const aa = (a.activity ?? "").toLowerCase();
-    const ab = (b.activity ?? "").toLowerCase();
-    return aa.localeCompare(ab);
-  });
+function moveItem<T>(arr: T[], from: number, to: number) {
+  const a = [...arr];
+  const [x] = a.splice(from, 1);
+  a.splice(to, 0, x);
+  return a;
 }
 
 export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
@@ -48,69 +39,70 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
-  const confirmTimersRef = useRef<Record<string, any>>({});
+
+  const drag = useRef<{ key: string | null; date: string | null }>({ key: null, date: null });
 
   useEffect(() => {
-    const mapped: UIActivityRow[] = (rows ?? []).map((r, idx) => ({
-      ...r,
-      activity_date: toISODate(r.activity_date),
-      __key: String((r as any).id ?? `row-${idx}-${toISODate(r.activity_date)}-${r.place}-${Math.random().toString(16).slice(2)}`),
-      __deleting: false,
-    }));
-    setUiRows(sortByDateAsc(mapped));
+    const mapped: UIActivityRow[] = (rows ?? [])
+      .map((r, idx) => ({
+        ...r,
+        activity_date: toISODate(r.activity_date),
+        __key: String((r as any).id ?? `row-${idx}-${Math.random().toString(16).slice(2)}`),
+        __deleting: false,
+      }))
+      .filter((r) => DATE_OPTIONS.includes(r.activity_date as any))
+      .sort((a, b) => {
+        const da = a.activity_date.localeCompare(b.activity_date);
+        if (da !== 0) return da;
+        const oa = Number(a.order_no ?? 1e9);
+        const ob = Number(b.order_no ?? 1e9);
+        if (oa !== ob) return oa - ob;
+        return String(a.__key).localeCompare(String(b.__key));
+      });
+
+    setUiRows(mapped);
     setErr(null);
     setOkMsg(null);
   }, [rows]);
 
-  const viewRows = useMemo(() => sortByDateAsc(uiRows), [uiRows]);
-
   const grouped = useMemo(() => {
     const m = new Map<string, UIActivityRow[]>();
-    for (const r of viewRows) {
-      const d = toISODate(r.activity_date) || "Sin fecha";
+    for (const d of DATE_OPTIONS) m.set(d, []);
+    for (const r of uiRows) {
+      const d = toISODate(r.activity_date);
       if (!m.has(d)) m.set(d, []);
       m.get(d)!.push(r);
     }
-    return Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [viewRows]);
+    return DATE_OPTIONS.map((d) => [d, m.get(d) ?? []] as const);
+  }, [uiRows]);
 
   const setCell = (key: string, patch: Partial<ActivityRow>) => {
-    setUiRows((prev) =>
-      prev.map((r) =>
-        r.__key === key
-          ? {
-              ...r,
-              ...patch,
-              activity_date: patch.activity_date !== undefined ? toISODate(patch.activity_date) : r.activity_date,
-            }
-          : r
-      )
-    );
+    setUiRows((prev) => prev.map((r) => (r.__key === key ? { ...r, ...patch } : r)));
   };
 
-  const addRow = () => {
-    const iso = new Date().toISOString().slice(0, 10);
-    const k = `new-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    setUiRows((prev) =>
-      sortByDateAsc([
-        ...prev,
-        {
-          __key: k,
-          id: undefined,
-          activity_date: iso,
-          place: "",
-          activity: "",
-          __deleting: false,
-        },
-      ])
-    );
+  const addRowForDate = (date: string) => {
+    const k = `new-${date}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setUiRows((prev) => {
+      const next: UIActivityRow[] = [...prev, { __key: k, id: undefined, order_no: null, activity_date: date, place: "Viaje", activity: "", __deleting: false }];
+      next.sort((a, b) => {
+        const da = a.activity_date.localeCompare(b.activity_date);
+        if (da !== 0) return da;
+        const oa = Number(a.order_no ?? 1e9);
+        const ob = Number(b.order_no ?? 1e9);
+        if (oa !== ob) return oa - ob;
+        return String(a.__key).localeCompare(String(b.__key));
+      });
+      return next;
+    });
   };
 
   const validate = () => {
-    for (const r of viewRows) {
-      if (!toISODate(r.activity_date)?.trim()) return "Falta fecha en una fila.";
-      if (!r.place?.trim()) return "Falta lugar en una fila.";
-      if (!r.activity?.trim()) return "Falta actividad en una fila.";
+    for (const [d, items] of grouped) {
+      for (const r of items) {
+        if (toISODate(r.activity_date) !== d) return "Fila inválida (fecha).";
+        if (!r.place?.trim()) return "Falta lugar en una fila.";
+        if (!r.activity?.trim()) return "Falta actividad en una fila.";
+      }
     }
     return null;
   };
@@ -134,18 +126,24 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
 
     setSaving(true);
     try {
-      const payload = {
-        rows: viewRows.map(({ __key, __deleting, ...r }) => ({
-          ...r,
-          activity_date: toISODate(r.activity_date),
-        })),
-      };
+      const out: any[] = [];
+      for (const [d, items] of grouped) {
+        items.forEach((r, idx) => {
+          out.push({
+            id: r.id,
+            place: r.place,
+            activity_date: d,
+            activity: r.activity,
+            order_no: idx + 1,
+          });
+        });
+      }
 
       const resp = await fetch(`/api/activities/save?_ts=${Date.now()}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ rows: out }),
       });
 
       const data = await resp.json().catch(() => null);
@@ -190,40 +188,42 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
     }
   };
 
-  const askDelete = (row: UIActivityRow) => {
-    if (row.__deleting) return;
+  const beginDrag = (key: string, date: string) => (e: React.PointerEvent) => {
+    drag.current = { key, date };
+    try {
+      (e.target as any)?.setPointerCapture?.(e.pointerId);
+    } catch {}
+    e.preventDefault();
+  };
 
-    const key = row.__key;
-    const flagKey = `__confirm_${key}`;
+  const onDragMove = (e: React.PointerEvent) => {
+    const key = drag.current.key;
+    const date = drag.current.date;
+    if (!key || !date) return;
 
-    const anyRow: any = row as any;
-    if (anyRow[flagKey]) {
-      deleteRow(row);
-      return;
-    }
+    const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    const rowEl = el?.closest?.("[data-rowkey]") as HTMLElement | null;
+    const targetKey = rowEl?.getAttribute?.("data-rowkey") || null;
+    const targetDate = rowEl?.getAttribute?.("data-date") || null;
 
-    if (confirmTimersRef.current[key]) clearTimeout(confirmTimersRef.current[key]);
+    if (!targetKey || !targetDate) return;
+    if (targetDate !== date) return;
+    if (targetKey === key) return;
 
-    setUiRows((prev) =>
-      prev.map((r) => {
-        if (r.__key !== key) return r as any;
-        const x: any = { ...r };
-        x[flagKey] = true;
-        return x;
-      })
-    );
+    setUiRows((prev) => {
+      const from = prev.findIndex((x) => x.__key === key);
+      const to = prev.findIndex((x) => x.__key === targetKey);
+      if (from < 0 || to < 0 || from === to) return prev;
 
-    confirmTimersRef.current[key] = setTimeout(() => {
-      setUiRows((prev) =>
-        prev.map((r) => {
-          if (r.__key !== key) return r as any;
-          const x: any = { ...r };
-          x[flagKey] = false;
-          return x;
-        })
-      );
-      confirmTimersRef.current[key] = null;
-    }, 4000);
+      if (toISODate(prev[from].activity_date) !== date) return prev;
+      if (toISODate(prev[to].activity_date) !== date) return prev;
+
+      return moveItem(prev, from, to);
+    });
+  };
+
+  const endDrag = () => {
+    drag.current = { key: null, date: null };
   };
 
   return (
@@ -251,15 +251,10 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
           background: #1f5132;
           color: #e8f6ee;
         }
-        .btnDanger {
-          border: 1px solid rgba(122, 16, 32, 0.25);
-          background: #fff;
-          color: #7a1020;
-        }
         .btnIcon {
-          width: 40px;
-          height: 40px;
-          border-radius: 12px;
+          width: 44px;
+          height: 44px;
+          border-radius: 14px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -271,7 +266,6 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
           font-size: 13px;
           font-weight: 700;
         }
-
         .msgErr {
           background: #fee;
           border: 1px solid #f5c2c2;
@@ -293,46 +287,85 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
           margin-bottom: 10px;
         }
 
-        .cards {
+        .groups {
           display: grid;
-          gap: 12px;
+          gap: 14px;
           place-items: center;
           width: 100%;
           max-width: 100%;
         }
-        .card {
-          width: min(560px, calc(100vw - 28px));
-          max-width: 100%;
+
+        .groupCard {
+          width: min(720px, calc(100vw - 28px));
           border: 1px solid #c6d9cc;
           border-radius: 14px;
-          padding: 12px;
           background: #e8f6ee;
           overflow: hidden;
         }
 
-        .grid2 {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        .groupHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
           gap: 10px;
-          margin-top: 10px;
-          align-items: start;
-        }
-        .field {
-          display: grid;
-          justify-items: stretch;
-          min-width: 0;
-        }
-        .field label {
-          display: block;
-          font-size: 12px;
+          padding: 12px 12px;
+          font-weight: 900;
           color: #1f5132;
-          opacity: 0.9;
-          margin-bottom: 4px;
+          border-bottom: 1px solid rgba(31, 81, 50, 0.2);
+          background: #e2f3e8;
+        }
+
+        .miniBtn {
+          border: 1px solid #c6d9cc;
+          background: #e8f6ee;
+          color: #1f5132;
+          font-weight: 900;
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+
+        .rowLine {
+          display: grid;
+          grid-template-columns: 36px 160px minmax(0, 1fr) 44px;
+          gap: 10px;
+          padding: 10px 12px;
+          border-bottom: 1px solid rgba(31, 81, 50, 0.15);
+          align-items: center;
+          color: #1f5132;
           font-weight: 800;
         }
 
-        .input,
-        .textarea {
+        .rowLine:last-child {
+          border-bottom: none;
+        }
+
+        .dragHandle {
+          width: 36px;
+          height: 40px;
+          border-radius: 12px;
+          border: 1px solid #c6d9cc;
+          background: #e8f6ee;
+          color: #1f5132;
+          font-weight: 900;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          user-select: none;
+          touch-action: none;
+          cursor: grab;
+        }
+
+        .dragHandle:active {
+          cursor: grabbing;
+        }
+
+        .select,
+        .input {
           width: 100%;
           min-width: 0;
           padding: 10px 10px;
@@ -344,126 +377,32 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
           font-weight: 800;
           outline: none;
         }
-        .textarea {
-          min-height: 44px;
-          resize: vertical;
-        }
 
-        .rowActions {
-          display: flex;
-          gap: 10px;
-          margin-top: 12px;
+        .delBtn {
+          border: 1px solid rgba(122, 16, 32, 0.25);
+          background: #fff;
+          color: #7a1020;
+          font-weight: 900;
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          display: inline-flex;
           align-items: center;
-          flex-wrap: wrap;
           justify-content: center;
+          cursor: pointer;
         }
 
-        .tableWrap {
-          display: none;
-          overflow-x: hidden;
-          border-radius: 14px;
-          border: 1px solid #c6d9cc;
-          background: #e8f6ee;
-          padding: 6px;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          table-layout: fixed;
-          background: transparent;
-        }
-        th,
-        td {
-          text-align: left;
-          border-bottom: 1px solid rgba(31, 81, 50, 0.2);
-          padding: 10px 8px;
-          vertical-align: top;
-          color: #1f5132;
-          font-weight: 800;
-          overflow: hidden;
-        }
-        th {
-          border-bottom: 1px solid rgba(31, 81, 50, 0.35);
-          font-weight: 900;
-          white-space: nowrap;
-        }
-
-        .colDate {
-          width: 140px;
-        }
-        .colPlace {
-          width: 160px;
-        }
-        .colAct {
-          width: auto;
-        }
-        .colDel {
-          width: 70px;
-        }
-
-        .mobileList {
-          display: block;
-        }
-        .dayGroup {
-          width: min(560px, calc(100vw - 28px));
-          border: 1px solid #c6d9cc;
-          border-radius: 14px;
-          background: #e8f6ee;
-          overflow: hidden;
-          margin: 0 auto 12px;
-        }
-        .dayHeader {
-          padding: 10px 12px;
-          font-weight: 900;
-          color: #1f5132;
-          border-bottom: 1px solid rgba(31, 81, 50, 0.2);
-          background: #e2f3e8;
-        }
-        .rowLine {
-          display: grid;
-          grid-template-columns: 140px minmax(0, 1fr);
-          gap: 10px;
-          padding: 10px 12px;
-          border-bottom: 1px solid rgba(31, 81, 50, 0.15);
-          color: #1f5132;
-          font-weight: 800;
-        }
-        .rowLine:last-child {
-          border-bottom: none;
-        }
-        .rowLeft {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .rowRight {
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        @media (min-width: 950px) {
-          .cards {
-            display: none;
+        @media (max-width: 520px) {
+          .groupCard {
+            width: min(560px, calc(100vw - 28px));
           }
-          .mobileList {
-            display: none;
+          .rowLine {
+            grid-template-columns: 34px 140px minmax(0, 1fr) 42px;
+            gap: 8px;
           }
-          .tableWrap {
-            display: block;
-            overflow-x: hidden;
-          }
-          th,
-          td {
-            padding: 8px 6px;
-          }
-          .input,
-          .textarea {
-            padding: 8px 8px;
-          }
-          .btnIcon {
-            width: 36px;
-            height: 36px;
-            border-radius: 12px;
+          .select,
+          .input {
+            padding: 10px 10px;
           }
         }
       `}</style>
@@ -474,127 +413,58 @@ export default function ActivitiesTable({ rows }: { rows: ActivityRow[] }) {
       <div className="topbar">
         <div>
           <div style={{ fontWeight: 900, fontSize: 18, color: "#1f5132" }}>Activities</div>
-          <div className="muted">Ordenado por fecha (más antiguo → más nuevo). Edita y guarda.</div>
+          <div className="muted">Fechas fijas. Ordena dentro de cada fecha y guarda.</div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <button className="btn btnPrimary" onClick={saveAll} disabled={saving}>
             {saving ? "Guardando…" : "Guardar"}
           </button>
-          <button className="btn btnPrimary btnIcon" onClick={addRow} title="Agregar fila">
+          <button className="btn btnPrimary btnIcon" onClick={() => addRowForDate(DATE_OPTIONS[0])} title="Agregar fila">
             +
           </button>
         </div>
       </div>
 
-      <div className="mobileList">
+      <div className="groups" onPointerMove={onDragMove} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerLeave={endDrag}>
         {grouped.map(([d, items]) => (
-          <div key={d} className="dayGroup">
-            <div className="dayHeader">{d}</div>
-            {items.map((r) => (
-              <div key={r.__key} className="rowLine">
-                <div className="rowLeft">{r.place?.trim() ? r.place : "Sin lugar"}</div>
-                <div className="rowRight">{r.activity?.trim() ? r.activity : "—"}</div>
-              </div>
-            ))}
-          </div>
-        ))}
-        {!viewRows.length && <div className="muted">No hay filas en activities.</div>}
-      </div>
+          <div key={d} className="groupCard">
+            <div className="groupHeader">
+              <div>{d}</div>
+              <button className="miniBtn" onClick={() => addRowForDate(d)} title="Agregar fila a esta fecha">
+                +
+              </button>
+            </div>
 
-      <div className="cards">
-        {viewRows.map((r) => {
-          const anyRow: any = r as any;
-          const flagKey = `__confirm_${r.__key}`;
-          const confirm = !!anyRow[flagKey];
-
-          return (
-            <div className="card" key={r.__key}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                <div style={{ fontWeight: 900, color: "#1f5132" }}>{r.place?.trim() ? r.place : "Sin lugar"}</div>
-                <div className="muted" style={{ fontWeight: 900 }}>
-                  {toISODate(r.activity_date) || "Sin fecha"}
-                </div>
-              </div>
-
-              <div className="grid2">
-                <div className="field">
-                  <label>Fecha</label>
-                  <input className="input" type="date" value={toISODate(r.activity_date)} onChange={(e) => setCell(r.__key, { activity_date: e.target.value })} />
+            {items.map((r, idx) => (
+              <div key={r.__key} className="rowLine" data-rowkey={r.__key} data-date={d}>
+                <div className="dragHandle" onPointerDown={beginDrag(r.__key, d)} title="Arrastrar">
+                  ≡
                 </div>
 
-                <div className="field">
-                  <label>Lugar</label>
-                  <input className="input" value={r.place ?? ""} onChange={(e) => setCell(r.__key, { place: e.target.value })} placeholder="Lugar" />
-                </div>
-              </div>
+                <select className="select" value={r.place} onChange={(e) => setCell(r.__key, { place: e.target.value })}>
+                  {PLACES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
 
-              <div className="field" style={{ marginTop: 10 }}>
-                <label>Actividad</label>
-                <textarea className="textarea" value={r.activity ?? ""} onChange={(e) => setCell(r.__key, { activity: e.target.value })} placeholder="Actividad" />
-              </div>
+                <input className="input" value={r.activity ?? ""} onChange={(e) => setCell(r.__key, { activity: e.target.value })} />
 
-              <div className="rowActions">
-                <button className="btn btnDanger" onClick={() => askDelete(r)} disabled={!!r.__deleting}>
-                  {r.__deleting ? "Eliminando…" : confirm ? "Segura loca?" : "Eliminar (-)"}
+                <button className="delBtn" onClick={() => deleteRow(r)} disabled={!!r.__deleting} title="Eliminar">
+                  {r.__deleting ? "…" : "-"}
                 </button>
               </div>
-            </div>
-          );
-        })}
+            ))}
 
-        {!viewRows.length && <div className="muted">No hay filas en activities.</div>}
-      </div>
-
-      <div className="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th className="colDate">Fecha</th>
-              <th className="colPlace">Lugar</th>
-              <th className="colAct">Actividad</th>
-              <th className="colDel">Del</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {viewRows.map((r) => {
-              const anyRow: any = r as any;
-              const flagKey = `__confirm_${r.__key}`;
-              const confirm = !!anyRow[flagKey];
-
-              return (
-                <tr key={r.__key}>
-                  <td className="colDate">
-                    <input className="input" type="date" value={toISODate(r.activity_date)} onChange={(e) => setCell(r.__key, { activity_date: e.target.value })} />
-                  </td>
-
-                  <td className="colPlace">
-                    <input className="input" value={r.place ?? ""} onChange={(e) => setCell(r.__key, { place: e.target.value })} placeholder="Lugar" />
-                  </td>
-
-                  <td className="colAct">
-                    <input className="input" value={r.activity ?? ""} onChange={(e) => setCell(r.__key, { activity: e.target.value })} placeholder="Actividad" />
-                  </td>
-
-                  <td className="colDel">
-                    <button className="btn btnDanger btnIcon" onClick={() => askDelete(r)} disabled={!!r.__deleting} title="Eliminar">
-                      {r.__deleting ? "…" : confirm ? "?" : "-"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-
-            {!viewRows.length && (
-              <tr>
-                <td colSpan={4} style={{ padding: 10 }}>
-                  No hay filas en activities.
-                </td>
-              </tr>
+            {!items.length && (
+              <div style={{ padding: 12, color: "#2a5e3b", fontWeight: 800, opacity: 0.9 }}>
+                Sin actividades. Agrega con “+”.
+              </div>
             )}
-          </tbody>
-        </table>
+          </div>
+        ))}
       </div>
     </>
   );

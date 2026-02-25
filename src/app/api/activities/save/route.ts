@@ -7,6 +7,7 @@ type ActivityRow = {
   place: string;
   activity_date: string;
   activity: string;
+  order_no?: number;
 };
 
 export async function POST(req: Request) {
@@ -20,12 +21,17 @@ export async function POST(req: Request) {
       }
     }
 
-    const cleaned = rows.map((r) => ({
-      id: r.id === undefined || r.id === null || String(r.id).trim() === "" ? undefined : r.id,
-      place: String(r.place),
-      activity_date: String(r.activity_date).slice(0, 10),
-      activity: String(r.activity),
-    }));
+    const cleaned = rows.map((r) => {
+      const base = {
+        place: String(r.place),
+        activity_date: String(r.activity_date).slice(0, 10),
+        activity: String(r.activity),
+        order_no: Number(r.order_no ?? 0) || null,
+      };
+
+      const hasId = !(r.id === undefined || r.id === null || String(r.id).trim() === "");
+      return hasId ? { ...base, id: r.id } : base;
+    });
 
     const { error: upErr } = await supabase.from("activities").upsert(cleaned, { onConflict: "id" });
     if (upErr) return NextResponse.json({ ok: false, error: upErr.message }, { status: 500 });
