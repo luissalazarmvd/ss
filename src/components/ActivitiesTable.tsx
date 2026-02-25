@@ -78,45 +78,10 @@ async function fetchActivitiesNoCache(): Promise<ActivityRow[]> {
   return j.rows ?? [];
 }
 
-function AutoGrowTextarea({
-  className,
-  value,
-  onChange,
-  disabled,
-  placeholder,
-}: {
-  className?: string;
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-  placeholder?: string;
-}) {
-  const ref = useRef<HTMLTextAreaElement | null>(null);
-
-  const sync = () => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${Math.max(44, el.scrollHeight)}px`;
-  };
-
-  useEffect(() => {
-    sync();
-  }, [value]);
-
-  return (
-    <textarea
-      ref={ref}
-      className={className}
-      value={value}
-      disabled={disabled}
-      placeholder={placeholder}
-      rows={1}
-      onInput={sync}
-      onChange={(e) => onChange(e.target.value)}
-      style={{ resize: "none", overflow: "hidden" }}
-    />
-  );
+function autoGrow(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "0px";
+  el.style.height = `${Math.max(42, el.scrollHeight)}px`;
 }
 
 export default function ActivitiesTable() {
@@ -126,21 +91,23 @@ export default function ActivitiesTable() {
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
-  const drag = useRef<{ key: string | null; date: string | null }>({ key: null, date: null });
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [dragDate, setDragDate] = useState<string | null>(null);
+  const [overKey, setOverKey] = useState<string | null>(null);
+
   const aliveRef = useRef(true);
   const refreshInFlightRef = useRef(false);
-  const draggedRef = useRef(false);
 
   const grouped = useMemo(() => {
-    const m = new Map<string, UIActivityRow[]>();
-    for (const d of DATE_OPTIONS) m.set(d, []);
+    const byDate = new Map<string, UIActivityRow[]>();
+    for (const d of DATE_OPTIONS) byDate.set(d, []);
     for (const r of uiRows) {
       const d = toISODate(r.activity_date);
-      if (!m.has(d)) m.set(d, []);
-      m.get(d)!.push(r);
+      if (!DATE_OPTIONS.includes(d as any)) continue;
+      if (!byDate.has(d)) byDate.set(d, []);
+      byDate.get(d)!.push(r);
     }
-    for (const d of DATE_OPTIONS) (m.get(d) ?? []).sort(sortRows);
-    return DATE_OPTIONS.map((d) => [d, m.get(d) ?? []] as const);
+    return DATE_OPTIONS.map((d) => [d, byDate.get(d) ?? []] as const);
   }, [uiRows]);
 
   const refresh = async (opts?: { silent?: boolean }) => {
@@ -190,6 +157,15 @@ export default function ActivitiesTable() {
     setUiRows((prev) => prev.map((r) => (r.__key === key ? { ...r, ...patch } : r)));
   };
 
+  const renumberDate = (rows: UIActivityRow[], date: string) => {
+    let n = 0;
+    return rows.map((r) => {
+      if (toISODate(r.activity_date) !== date) return r;
+      n += 1;
+      return { ...r, order_no: n };
+    });
+  };
+
   const addRowForDate = (date: string) => {
     const k = `new-${date}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     setUiRows((prev) => {
@@ -205,8 +181,8 @@ export default function ActivitiesTable() {
           __deleting: false,
         },
       ];
-      next.sort(sortRows);
-      return next;
+      const ordered = mapToUI(next);
+      return ordered;
     });
   };
 
@@ -305,53 +281,69 @@ export default function ActivitiesTable() {
     }
   };
 
-  const reorderWithinDate = (date: string, fromKey: string, toKey: string) => {
+  const onDragStartRow = (key: string, date: string) => (e: React.DragEvent) => {
+    if (!key || !date) return;
+    const payload = { key, date };
+    const s = JSON.stringify(payload);
+    try {
+      e.dataTransfer.setData("application/json", s);
+      e.dataTransfer.setData("text/plain", s);
+      e.dataTransfer.effectAllowed = "move";
+    } catch {}
+    setDragKey(key);
+    setDragDate(date);
+    setOverKey(null);
+  };
+
+  const readPayload = (e: React.DragEvent): { key: string; date: string } | null => {
+    const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain") || "";
+    if (!raw) return null;
+    try {
+      const p = JSON.parse(raw) as any;
+      if (!p?.key || !p?.date) return null;
+      return { key: String(p.key), date: String(p.date) };
+    } catch {
+      return null;
+    }
+  };
+
+  const reorderWithinDate = (fromKey: string, toKey: string, date: string) => {
     setUiRows((prev) => {
-      const dateRows = prev.filter((r) => toISODate(r.activity_date) === date).slice().sort(sortRows);
-      const fromIdx = dateRows.findIndex((r) => r.__key === fromKey);
-      const toIdx = dateRows.findIndex((r) => r.__key === toKey);
-      if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return prev;
+      const from = prev.findIndex((x) => x.__key === fromKey);
+      const to = prev.findIndex((x) => x.__key === toKey);
+      if (from < 0 || to < 0 || from === to) return prev;
 
-      const moved = moveItem(dateRows, fromIdx, toIdx).map((r, i) => ({ ...r, order_no: i + 1 }));
-      const byKey = new Map(moved.map((r) => [r.__key, r] as const));
+      if (toISODate(prev[from].activity_date) !== date) return prev;
+      if (toISODate(prev[to].activity_date) !== date) return prev;
 
-      const next = prev.map((r) => (toISODate(r.activity_date) === date ? (byKey.get(r.__key) ?? r) : r));
-      return next;
+      const moved = moveItem(prev, from, to);
+      return renumberDate(moved, date);
     });
   };
 
-  const beginDrag = (key: string, date: string) => (e: React.PointerEvent) => {
-    drag.current = { key, date };
-    draggedRef.current = true;
-    try {
-      (e.currentTarget as any)?.setPointerCapture?.(e.pointerId);
-    } catch {}
+  const onDragOverRow = (targetKey: string, targetDate: string) => (e: React.DragEvent) => {
+    const p = readPayload(e);
+    if (!p) return;
+    if (p.date !== targetDate) return;
+    if (p.key === targetKey) return;
+
     e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setOverKey(targetKey);
+    reorderWithinDate(p.key, targetKey, targetDate);
   };
 
-  const onDragMove = (e: React.PointerEvent) => {
-    const key = drag.current.key;
-    const date = drag.current.date;
-    if (!key || !date) return;
-
-    const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
-    const rowEl = el?.closest?.("[data-rowkey]") as HTMLElement | null;
-    const targetKey = rowEl?.getAttribute?.("data-rowkey") || null;
-    const targetDate = rowEl?.getAttribute?.("data-date") || null;
-
-    if (!targetKey || !targetDate) return;
-    if (targetDate !== date) return;
-    if (targetKey === key) return;
-
-    reorderWithinDate(date, key, targetKey);
-    drag.current = { key: targetKey, date };
+  const onDropRow = (e: React.DragEvent) => {
+    e.preventDefault();
+    setOverKey(null);
+    setDragKey(null);
+    setDragDate(null);
   };
 
-  const endDrag = () => {
-    drag.current = { key: null, date: null };
-    setTimeout(() => {
-      draggedRef.current = false;
-    }, 0);
+  const onDragEndRow = () => {
+    setOverKey(null);
+    setDragKey(null);
+    setDragDate(null);
   };
 
   return (
@@ -472,9 +464,21 @@ export default function ActivitiesTable() {
           border-bottom: none;
         }
 
+        .rowLine.dragging {
+          opacity: 0.65;
+          transform: scale(0.995);
+          filter: saturate(1.05);
+        }
+
+        .rowLine.over {
+          outline: 2px solid rgba(31, 81, 50, 0.35);
+          outline-offset: -2px;
+          background: rgba(31, 81, 50, 0.06);
+        }
+
         .dragHandle {
           width: 36px;
-          height: 44px;
+          height: 40px;
           border-radius: 12px;
           border: 1px solid #c6d9cc;
           background: #e8f6ee;
@@ -484,12 +488,12 @@ export default function ActivitiesTable() {
           align-items: center;
           justify-content: center;
           user-select: none;
-          touch-action: none;
           cursor: grab;
         }
 
-        .dragHandle:active {
+        .rowLine.dragging .dragHandle {
           cursor: grabbing;
+          background: #dff1e6;
         }
 
         .select,
@@ -506,23 +510,24 @@ export default function ActivitiesTable() {
           outline: none;
         }
 
+        textarea.input {
+          resize: none;
+          overflow: hidden;
+          line-height: 1.25;
+        }
+
         .delBtn {
           border: 1px solid rgba(122, 16, 32, 0.25);
           background: #fff;
           color: #7a1020;
           font-weight: 900;
           width: 40px;
-          height: 44px;
+          height: 40px;
           border-radius: 12px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
-        }
-
-        .cellPlace {
-        }
-        .cellActivity {
         }
 
         @media (max-width: 520px) {
@@ -531,32 +536,32 @@ export default function ActivitiesTable() {
           }
 
           .rowLine {
-            grid-template-columns: 34px 1fr 42px;
+            grid-template-columns: 34px minmax(0, 1fr) 42px;
             grid-template-areas:
               "drag place del"
-              "activity activity activity";
-            align-items: start;
+              "drag act del";
             gap: 8px;
+            align-items: start;
           }
 
           .dragHandle {
-            grid-area: drag;
             width: 34px;
-            height: 44px;
           }
 
-          .cellPlace {
+          .placeCell {
             grid-area: place;
           }
 
-          .cellActivity {
-            grid-area: activity;
+          .actCell {
+            grid-area: act;
           }
 
-          .delBtn {
+          .dragCell {
+            grid-area: drag;
+          }
+
+          .delCell {
             grid-area: del;
-            width: 42px;
-            height: 44px;
           }
 
           .select,
@@ -588,13 +593,7 @@ export default function ActivitiesTable() {
         </div>
       </div>
 
-      <div
-        className="groups"
-        onPointerMove={onDragMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onPointerLeave={endDrag}
-      >
+      <div className="groups">
         {grouped.map(([d, items]) => (
           <div key={d} className="groupCard">
             <div className="groupHeader">
@@ -604,42 +603,52 @@ export default function ActivitiesTable() {
               </button>
             </div>
 
-            {items.map((r) => (
-              <div key={r.__key} className="rowLine" data-rowkey={r.__key} data-date={d}>
-                <div className="dragHandle" onPointerDown={beginDrag(r.__key, d)} title="Arrastrar">
-                  ≡
-                </div>
+            {items.map((r) => {
+              const isDragging = dragKey === r.__key && dragDate === d;
+              const isOver = overKey === r.__key && dragDate === d && dragKey && dragKey !== r.__key;
 
-                <div className="cellPlace">
-                  <select
-                    className="select"
-                    value={r.place}
-                    onChange={(e) => setCell(r.__key, { place: e.target.value })}
-                    disabled={!!r.__deleting || saving}
-                  >
+              return (
+                <div
+                  key={r.__key}
+                  className={`rowLine${isDragging ? " dragging" : ""}${isOver ? " over" : ""}`}
+                  draggable
+                  onDragStart={onDragStartRow(r.__key, d)}
+                  onDragOver={onDragOverRow(r.__key, d)}
+                  onDrop={onDropRow}
+                  onDragEnd={onDragEndRow}
+                  data-rowkey={r.__key}
+                  data-date={d}
+                >
+                  <div className="dragHandle dragCell" title="Arrastrar">
+                    ≡
+                  </div>
+
+                  <select className="select placeCell" value={r.place} onChange={(e) => setCell(r.__key, { place: e.target.value })}>
                     {PLACES.map((p) => (
                       <option key={p} value={p}>
                         {p}
                       </option>
                     ))}
                   </select>
-                </div>
 
-                <div className="cellActivity">
-                  <AutoGrowTextarea
-                    className="input"
+                  <textarea
+                    className="input actCell"
                     value={r.activity ?? ""}
-                    disabled={!!r.__deleting || saving}
-                    onChange={(v) => setCell(r.__key, { activity: v })}
-                    placeholder="Comentario / actividad"
+                    rows={1}
+                    onFocus={(e) => autoGrow(e.currentTarget)}
+                    onInput={(e) => autoGrow(e.currentTarget)}
+                    onChange={(e) => {
+                      setCell(r.__key, { activity: e.target.value });
+                      autoGrow(e.currentTarget);
+                    }}
                   />
-                </div>
 
-                <button className="delBtn" onClick={() => deleteRow(r)} disabled={!!r.__deleting || saving} title="Eliminar">
-                  {r.__deleting ? "…" : "-"}
-                </button>
-              </div>
-            ))}
+                  <button className="delBtn delCell" onClick={() => deleteRow(r)} disabled={!!r.__deleting} title="Eliminar">
+                    {r.__deleting ? "…" : "-"}
+                  </button>
+                </div>
+              );
+            })}
 
             {!items.length && (
               <div style={{ padding: 12, color: "#2a5e3b", fontWeight: 800, opacity: 0.9 }}>
