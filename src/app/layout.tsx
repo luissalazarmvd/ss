@@ -5,13 +5,6 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "SS - Viaje",
-  icons: {
-    icon: [
-      { url: "/favicon.ico" },
-      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
-    ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -25,6 +18,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           background: "#cfe9d7",
         }}
       >
+        <img
+          src="/esquina.png"
+          alt=""
+          style={{
+            position: "fixed",
+            top: 10,
+            left: 10,
+            width: 38,
+            height: "auto",
+            zIndex: 9999,
+            pointerEvents: "none",
+          }}
+        />
+
         <Script src="https://www.airbnb.com.pe/embeddable/airbnb_jssdk" strategy="afterInteractive" />
         {children}
       </body>

@@ -4,30 +4,46 @@ import React, { useEffect, useRef, useState } from "react";
 
 export default function BgAudio() {
   const ref = useRef<HTMLAudioElement | null>(null);
-  const [needsClick, setNeedsClick] = useState(false);
 
-  const tryPlay = async () => {
+  const [isOn, setIsOn] = useState(false);       // está sonando
+  const [blocked, setBlocked] = useState(false); // autoplay bloqueado
+
+  const play = async () => {
     const a = ref.current;
     if (!a) return;
     try {
       await a.play();
-      setNeedsClick(false);
+      setIsOn(true);
+      setBlocked(false);
     } catch {
-      setNeedsClick(true);
+      setIsOn(false);
+      setBlocked(true);
+    }
+  };
+
+  const pause = () => {
+    const a = ref.current;
+    if (!a) return;
+    a.pause();
+    setIsOn(false);
+  };
+
+  const toggle = async () => {
+    if (isOn) {
+      pause();
+    } else {
+      await play();
     }
   };
 
   useEffect(() => {
-    tryPlay();
+    // intenta autoplay al cargar (puede fallar)
+    play();
 
-    // fallback: si el usuario toca cualquier parte, intenta arrancar
-    const onFirstGesture = () => {
-      tryPlay();
-      window.removeEventListener("pointerdown", onFirstGesture);
-      window.removeEventListener("keydown", onFirstGesture);
-    };
-    window.addEventListener("pointerdown", onFirstGesture, { once: true });
-    window.addEventListener("keydown", onFirstGesture, { once: true });
+    // primer gesto del usuario = intenta arrancar
+    const onFirstGesture = () => play();
+    window.addEventListener("pointerdown", onFirstGesture, { passive: true });
+    window.addEventListener("keydown", onFirstGesture);
 
     return () => {
       window.removeEventListener("pointerdown", onFirstGesture);
@@ -40,26 +56,26 @@ export default function BgAudio() {
     <>
       <audio ref={ref} src="/audio.mp3" loop preload="auto" />
 
-      {needsClick && (
-        <button
-          onClick={tryPlay}
-          style={{
-            position: "fixed",
-            right: 14,
-            bottom: 14,
-            zIndex: 9999,
-            border: "1px solid #1f5132",
-            background: "#1f5132",
-            color: "#e8f6ee",
-            fontWeight: 900,
-            padding: "10px 12px",
-            borderRadius: 12,
-            cursor: "pointer",
-          }}
-        >
-          Activar audio
-        </button>
-      )}
+      <button
+        onClick={toggle}
+        style={{
+          position: "fixed",
+          top: 10,
+          right: 10,
+          zIndex: 10000,
+          border: "1px solid #1f5132",
+          background: isOn ? "#1f5132" : "#e8f6ee",
+          color: isOn ? "#e8f6ee" : "#1f5132",
+          fontWeight: 900,
+          padding: "10px 12px",
+          borderRadius: 12,
+          cursor: "pointer",
+        }}
+        title={isOn ? "Mutear" : "Activar audio"}
+      >
+        {isOn ? "🔊 Audio" : "🔇 Audio"}
+        {blocked ? " (tap)" : ""}
+      </button>
     </>
   );
 }
