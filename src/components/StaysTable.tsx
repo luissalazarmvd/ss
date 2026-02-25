@@ -165,14 +165,40 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
     return { ...row, listing_link: typed, __link_input: "" };
   };
 
+  const existsDuplicateByListingId = (candidateUrl: string | null, currentKey: string) => {
+    const cid = getAirbnbId(candidateUrl);
+    if (!cid) return false;
+
+    for (const r of data) {
+      if (r.__key === currentKey) continue;
+      const rid = getAirbnbId(r.listing_link ?? r.__orig_link ?? null);
+      if (rid && rid === cid) return true;
+    }
+    return false;
+  };
+
   const saveRow = async (row: UIStayRow) => {
     const rowToSave = applyLinkInputToRow(row);
+    const urlTrimmed = rowToSave.listing_link && rowToSave.listing_link.trim() ? rowToSave.listing_link.trim() : null;
+    const candId = getAirbnbId(urlTrimmed);
+
+    if (urlTrimmed) {
+      if (!candId) {
+        updateLocal(row.__key, { __saving: false, __error: "Link inválido: debe ser de Airbnb y contener /rooms/<id>.", __confirm_delete: false });
+        return;
+      }
+
+      if (existsDuplicateByListingId(urlTrimmed, row.__key)) {
+        updateLocal(row.__key, { __saving: false, __error: "Ese Airbnb ya existe en la lista (mismo ID).", __confirm_delete: false });
+        return;
+      }
+    }
 
     updateLocal(row.__key, {
       __saving: true,
       __error: null,
-      listing_link: rowToSave.listing_link,
-      __link_input: rowToSave.__link_input,
+      listing_link: urlTrimmed,
+      __link_input: "",
       __confirm_delete: false,
     });
 
@@ -185,7 +211,7 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
         total_price: Number(rowToSave.total_price),
         rooms: rowToSave.rooms,
         beds: rowToSave.beds,
-        listing_link: rowToSave.listing_link && rowToSave.listing_link.trim() ? rowToSave.listing_link.trim() : null,
+        listing_link: urlTrimmed,
       },
     };
 
@@ -640,7 +666,6 @@ export default function StaysTable({ rows }: { rows: StayRow[] }) {
                   </button>
                 </div>
 
-                {/* EN IPHONE: NO MOSTRAR el https://... para que no rompa el ancho */}
                 {r.listing_link ? (
                   <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
                     <a
