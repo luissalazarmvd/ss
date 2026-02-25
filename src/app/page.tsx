@@ -29,7 +29,7 @@ export default async function Page() {
       <h2 style={{ marginTop: 24, textAlign: "center", color: DARK_GREEN }}>Airbnb's</h2>
       <StaysTable />
 
-      <h2 style={{ marginTop: 24, textAlign: "center", color: DARK_GREEN }}>Qué haremos</h2>
+      <h2 style={{ marginTop: 24, textAlign: "center", color: DARK_GREEN }}>Qué chucha sale</h2>
       <ActivitiesTable />
     </main>
   );

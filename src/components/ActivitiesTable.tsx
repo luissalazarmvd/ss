@@ -595,7 +595,7 @@ export default function ActivitiesTable() {
 
       <div className="topbar">
         <div>
-          <div style={{ fontWeight: 900, fontSize: 18, color: "#1f5132" }}>Activities</div>
+          <div style={{ fontWeight: 900, fontSize: 18, color: "#1f5132" }}>Actividades</div>
           <div className="muted">Fechas fijas. Arrastra con “≡” para reordenar y guarda.</div>
         </div>
 
