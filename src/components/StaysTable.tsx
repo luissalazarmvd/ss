@@ -188,17 +188,8 @@ export default function StaysTable() {
     aliveRef.current = true;
     refresh({ force: true });
 
-    const onVis = () => {
-      if (document.visibilityState === "visible") refresh({ silent: true, force: false });
-    };
-    document.addEventListener("visibilitychange", onVis);
-
-    const t = setInterval(() => refresh({ silent: true, force: false }), 45000);
-
     return () => {
       aliveRef.current = false;
-      document.removeEventListener("visibilitychange", onVis);
-      clearInterval(t);
     };
   }, [hasUnsavedEdits]);
 
