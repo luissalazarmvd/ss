@@ -1,6 +1,7 @@
 // src/app/api/activities/save/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,7 +31,9 @@ function toISODate(v: any) {
 function isValidId(id: any) {
   if (id === undefined || id === null) return false;
   const s = String(id).trim();
-  return s.length > 0 && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined";
+  if (!s) return false;
+  const sl = s.toLowerCase();
+  return sl !== "null" && sl !== "undefined";
 }
 
 export async function POST(req: Request) {
@@ -44,7 +47,7 @@ export async function POST(req: Request) {
     }
 
     const clean: Array<{
-      id?: string | number;
+      id: string;
       place: string;
       activity_date: string;
       activity: string;
@@ -64,44 +67,35 @@ export async function POST(req: Request) {
       const order_no_raw = Number(r?.order_no);
       const order_no = Number.isFinite(order_no_raw) && order_no_raw > 0 ? Math.floor(order_no_raw) : 1;
 
-      const row: any = { place, activity_date, activity, order_no };
+      const id = isValidId(r?.id) ? String(r.id).trim() : randomUUID();
 
-      if (isValidId(r?.id)) row.id = r.id;
-
-      clean.push(row);
+      clean.push({ id, place, activity_date, activity, order_no });
     }
 
     const datesTouched = Array.from(new Set(clean.map((x) => x.activity_date)));
 
     for (const d of datesTouched) {
       const incomingForDate = clean.filter((x) => x.activity_date === d);
-
-      const keepIds = incomingForDate.filter((x) => isValidId((x as any).id)).map((x) => String((x as any).id));
+      const keepIds = incomingForDate.map((x) => x.id);
 
       const { data: existing, error: exErr } = await sb.from("activities").select("id").eq("activity_date", d);
       if (exErr) throw exErr;
 
       const existingIds = (existing ?? []).map((x: any) => String(x.id));
-
-      const toDelete = keepIds.length
-        ? existingIds.filter((id) => !keepIds.includes(id))
-        : existingIds;
+      const toDelete = existingIds.filter((id) => !keepIds.includes(id));
 
       if (toDelete.length) {
         const { error: delErr } = await sb.from("activities").delete().in("id", toDelete);
         if (delErr) throw delErr;
       }
 
-      const payload = incomingForDate.map((x) => {
-        const o: any = {
-          place: x.place,
-          activity_date: x.activity_date,
-          activity: x.activity,
-          order_no: x.order_no,
-        };
-        if (isValidId((x as any).id)) o.id = (x as any).id;
-        return o;
-      });
+      const payload = incomingForDate.map((x) => ({
+        id: x.id,
+        place: x.place,
+        activity_date: x.activity_date,
+        activity: x.activity,
+        order_no: x.order_no,
+      }));
 
       if (payload.length) {
         const { error: upErr } = await sb.from("activities").upsert(payload, { onConflict: "id" });

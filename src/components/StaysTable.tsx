@@ -149,8 +149,19 @@ export default function StaysTable() {
   const openRow = useMemo(() => data.find((r) => r.__key === openEmbedForKey) ?? null, [data, openEmbedForKey]);
   const embedId = useMemo(() => getAirbnbId(openRow?.listing_link ?? null), [openRow?.listing_link]);
 
-  const refresh = async (opts?: { silent?: boolean }) => {
+  const hasUnsavedEdits = useMemo(() => {
+    for (const r of data) {
+      if (r.__saving || r.__deleting) return true;
+      if ((r.__link_input ?? "").trim().length > 0) return true;
+      if (r.__orig_link == null) return true;
+    }
+    return false;
+  }, [data]);
+
+  const refresh = async (opts?: { silent?: boolean; force?: boolean }) => {
     if (refreshInFlightRef.current) return;
+    if (!opts?.force && hasUnsavedEdits) return;
+
     refreshInFlightRef.current = true;
 
     if (!opts?.silent) {
@@ -175,21 +186,21 @@ export default function StaysTable() {
 
   useEffect(() => {
     aliveRef.current = true;
-    refresh();
+    refresh({ force: true });
 
     const onVis = () => {
-      if (document.visibilityState === "visible") refresh({ silent: true });
+      if (document.visibilityState === "visible") refresh({ silent: true, force: false });
     };
     document.addEventListener("visibilitychange", onVis);
 
-    const t = setInterval(() => refresh({ silent: true }), 45000);
+    const t = setInterval(() => refresh({ silent: true, force: false }), 45000);
 
     return () => {
       aliveRef.current = false;
       document.removeEventListener("visibilitychange", onVis);
       clearInterval(t);
     };
-  }, []);
+  }, [hasUnsavedEdits]);
 
   const addRow = () => {
     const iso = new Date().toISOString().slice(0, 10);
@@ -293,7 +304,7 @@ export default function StaysTable() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j?.ok) throw new Error(j?.error || `Error guardando (HTTP ${res.status})`);
 
-      await refresh({ silent: true });
+      await refresh({ silent: true, force: true });
     } catch (e: any) {
       updateLocal(row.__key, { __saving: false, __error: e?.message || "Error guardando", __confirm_delete: false });
     }
@@ -327,7 +338,7 @@ export default function StaysTable() {
       if (!res.ok || !j?.ok) throw new Error(j?.error || `Error eliminando (HTTP ${res.status})`);
 
       if (openEmbedForKey === row.__key) setOpenEmbedForKey(null);
-      await refresh({ silent: true });
+      await refresh({ silent: true, force: true });
     } catch (e: any) {
       updateLocal(row.__key, { __deleting: false, __error: e?.message || "Error eliminando", __confirm_delete: false });
     }
@@ -635,11 +646,11 @@ export default function StaysTable() {
       <div className="topbar">
         <div>
           <div style={{ fontWeight: 900, fontSize: 18, color: "#1f5132" }}>Opciones</div>
-          <div className="muted">Edita cualquier fila y guarda. “+” crea una nueva. “-” elimina. Gabso gay</div>
+          <div className="muted">Edita cualquier fila y guarda. “+” crea una nueva. “-” elimina.</div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button className="btn" onClick={() => refresh()} disabled={loading} title="Actualizar">
+          <button className="btn" onClick={() => refresh({ force: true })} disabled={loading} title="Actualizar">
             {loading ? "Cargando…" : "Refrescar"}
           </button>
           <button className="btn btnPrimary btnIcon" onClick={addRow} title="Agregar fila">
@@ -792,7 +803,7 @@ export default function StaysTable() {
                 </button>
 
                 <button className="btn btnDanger btnDangerWide btnDelWide" onClick={() => askDelete(r)} disabled={!!r.__saving || !!r.__deleting} title="Eliminar">
-                  {r.__deleting ? "Eliminando…" : r.__confirm_delete ? "Segura loca?" : "Eliminar (-)"}
+                  {r.__deleting ? "Eliminando…" : r.__confirm_delete ? "¿Seguro?" : "Eliminar (-)"}
                 </button>
               </div>
             </div>
