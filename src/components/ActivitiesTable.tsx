@@ -96,16 +96,11 @@ export default function ActivitiesTable() {
   const [dragDate, setDragDate] = useState<string | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
 
+  const [isTouchUI, setIsTouchUI] = useState(false);
+
   const aliveRef = useRef(true);
   const refreshInFlightRef = useRef(false);
   const dragRef = useRef<{ key: string; date: string } | null>(null);
-  const touchDragRef = useRef<{
-    active: boolean;
-    key: string;
-    date: string;
-  } | null>(null);
-
-  const touchRafRef = useRef<number | null>(null);  
 
   const grouped = useMemo(() => {
     const byDate = new Map<string, UIActivityRow[]>();
@@ -153,6 +148,26 @@ export default function ActivitiesTable() {
       aliveRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const mqTouch = window.matchMedia("(hover: none) and (pointer: coarse)");
+    const mqSmall = window.matchMedia("(max-width: 520px)");
+    const apply = () => setIsTouchUI(!!(mqTouch.matches && mqSmall.matches));
+    apply();
+
+    const handler = () => apply();
+    if (typeof mqTouch.addEventListener === "function") mqTouch.addEventListener("change", handler);
+    else (mqTouch as any).addListener(handler);
+    if (typeof mqSmall.addEventListener === "function") mqSmall.addEventListener("change", handler);
+    else (mqSmall as any).addListener(handler);
+
+    return () => {
+      if (typeof mqTouch.removeEventListener === "function") mqTouch.removeEventListener("change", handler);
+      else (mqTouch as any).removeListener(handler);
+      if (typeof mqSmall.removeEventListener === "function") mqSmall.removeEventListener("change", handler);
+      else (mqSmall as any).removeListener(handler);
+    };
   }, []);
 
   const setCell = (key: string, patch: Partial<ActivityRow>) => {
@@ -345,65 +360,39 @@ export default function ActivitiesTable() {
     endDrag();
   };
 
-  const startTouchDrag = (key: string, date: string) => (e: React.PointerEvent) => {
-    if (e.pointerType !== "touch") return;
+  const moveUp = (key: string, date: string) => {
+    setUiRows((prev) => {
+      const idx = prev.findIndex((x) => x.__key === key);
+      if (idx < 0) return prev;
 
-    e.preventDefault();
+      if (toISODate(prev[idx].activity_date) !== date) return prev;
 
-    touchDragRef.current = { active: true, key, date };
-    dragRef.current = { key, date };
+      let prevIdx = idx - 1;
+      while (prevIdx >= 0 && toISODate(prev[prevIdx].activity_date) !== date) prevIdx -= 1;
+      if (prevIdx < 0) return prev;
 
-    setDragKey(key);
-    setDragDate(date);
-    setOverKey(null);
-
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    } catch {}
-  };
-
-  const moveTouchDrag = (e: React.PointerEvent) => {
-    if (e.pointerType !== "touch") return;
-    const p = touchDragRef.current;
-    if (!p?.active) return;
-
-    e.preventDefault();
-
-    if (touchRafRef.current) cancelAnimationFrame(touchRafRef.current);
-    touchRafRef.current = requestAnimationFrame(() => {
-      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
-      const row = el?.closest?.("[data-rowkey]") as HTMLElement | null;
-      if (!row) return;
-
-      const targetKey = row.getAttribute("data-rowkey") || "";
-      const targetDate = row.getAttribute("data-date") || "";
-      if (!targetKey || !targetDate) return;
-
-      if (p.date !== targetDate) return;
-      if (p.key === targetKey) return;
-
-      setOverKey(targetKey);
-      reorderWithinDate(p.key, targetKey, p.date);
-
-      touchDragRef.current = { active: true, key: targetKey, date: p.date };
-      dragRef.current = { key: targetKey, date: p.date };
-      setDragKey(targetKey);
-      setDragDate(p.date);
+      const moved = moveItem(prev, idx, prevIdx);
+      const ren = renumberDate(moved, date);
+      return ren.sort(sortRows);
     });
   };
 
-  const endTouchDrag = (e?: React.PointerEvent) => {
-    const p = touchDragRef.current;
-    if (!p?.active) return;
+  const moveDown = (key: string, date: string) => {
+    setUiRows((prev) => {
+      const idx = prev.findIndex((x) => x.__key === key);
+      if (idx < 0) return prev;
 
-    if (touchRafRef.current) {
-      cancelAnimationFrame(touchRafRef.current);
-      touchRafRef.current = null;
-    }
+      if (toISODate(prev[idx].activity_date) !== date) return prev;
 
-    touchDragRef.current = null;
-    endDrag();
-  }; 
+      let nextIdx = idx + 1;
+      while (nextIdx < prev.length && toISODate(prev[nextIdx].activity_date) !== date) nextIdx += 1;
+      if (nextIdx >= prev.length) return prev;
+
+      const moved = moveItem(prev, idx, nextIdx);
+      const ren = renumberDate(moved, date);
+      return ren.sort(sortRows);
+    });
+  };
 
   return (
     <>
@@ -529,9 +518,6 @@ export default function ActivitiesTable() {
 
         .dragHandle {
           width: 36px;
-          touch-action: none;
-          -webkit-user-select: none;
-          user-select: none;
           height: 40px;
           border-radius: 12px;
           border: 1px solid #c6d9cc;
@@ -542,6 +528,8 @@ export default function ActivitiesTable() {
           align-items: center;
           justify-content: center;
           cursor: grab;
+          user-select: none;
+          -webkit-user-select: none;
         }
 
         .dragHandle:active {
@@ -550,6 +538,34 @@ export default function ActivitiesTable() {
 
         .rowLine.dragging .dragHandle {
           background: #dff1e6;
+        }
+
+        .moveBtns {
+          display: none;
+          gap: 6px;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .mvBtn {
+          width: 34px;
+          height: 40px;
+          border-radius: 12px;
+          border: 1px solid #c6d9cc;
+          background: #e8f6ee;
+          color: #1f5132;
+          font-weight: 900;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+        }
+
+        .mvBtn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
         }
 
         .select,
@@ -626,6 +642,20 @@ export default function ActivitiesTable() {
           .input {
             padding: 10px 10px;
           }
+
+          .dragHandle {
+            display: inline-flex;
+          }
+
+          .moveBtns {
+            display: flex;
+          }
+        }
+
+        @media (max-width: 520px) {
+          :global(body) {
+            -webkit-touch-callout: none;
+          }
         }
       `}</style>
 
@@ -635,7 +665,7 @@ export default function ActivitiesTable() {
       <div className="topbar">
         <div>
           <div style={{ fontWeight: 900, fontSize: 18, color: "#1f5132" }}>Actividades</div>
-          <div className="muted">Fechas fijas. Arrastra con “≡” para reordenar y guarda.</div>
+          <div className="muted">Fechas fijas. Reordena y guarda.</div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -658,9 +688,12 @@ export default function ActivitiesTable() {
               </button>
             </div>
 
-            {items.map((r) => {
+            {items.map((r, idx) => {
               const isDragging = dragKey === r.__key && dragDate === d;
               const isOver = overKey === r.__key && dragDate === d && dragKey && dragKey !== r.__key;
+
+              const canUp = idx > 0;
+              const canDown = idx < items.length - 1;
 
               return (
                 <div
@@ -671,19 +704,20 @@ export default function ActivitiesTable() {
                   data-rowkey={r.__key}
                   data-date={d}
                 >
-                  <div
-                    className="dragHandle dragCell"
-                    title="Arrastrar"
-                    draggable
-                    onDragStart={startDrag(r.__key, d)}
-                    onDragEnd={endDrag}
-                    onPointerDown={startTouchDrag(r.__key, d)}
-                    onPointerMove={moveTouchDrag}
-                    onPointerUp={endTouchDrag}
-                    onPointerCancel={endTouchDrag}
-                  >
-                    ≡
-                  </div>
+                  {!isTouchUI ? (
+                    <div className="dragHandle dragCell" title="Arrastrar" draggable onDragStart={startDrag(r.__key, d)} onDragEnd={endDrag}>
+                      ≡
+                    </div>
+                  ) : (
+                    <div className="moveBtns dragCell" aria-label="Mover">
+                      <button className="mvBtn" onClick={() => moveUp(r.__key, d)} disabled={!canUp || !!r.__deleting} title="Subir">
+                        ↑
+                      </button>
+                      <button className="mvBtn" onClick={() => moveDown(r.__key, d)} disabled={!canDown || !!r.__deleting} title="Bajar">
+                        ↓
+                      </button>
+                    </div>
+                  )}
 
                   <select className="select placeCell" value={r.place} onChange={(e) => setCell(r.__key, { place: e.target.value })}>
                     {PLACES.map((p) => (
