@@ -40,8 +40,8 @@ function getAirbnbId(url: string | null) {
 
 function isInvalidLinkInput(row: UIStayRow) {
   const typed = (row.__link_input ?? "").trim();
-  if (!typed) return false; // vacío = ok
-  return !getAirbnbId(typed); // tiene texto pero no tiene /rooms/<id>
+  if (!typed) return false;
+  return !getAirbnbId(typed);
 }
 
 function fmtMoney(n: any) {
@@ -148,12 +148,17 @@ export default function StaysTable() {
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [confirmDesktopKey, setConfirmDesktopKey] = useState<string | null>(null);
+
   const confirmTimersRef = useRef<Record<string, any>>({});
   const aliveRef = useRef(true);
   const refreshInFlightRef = useRef(false);
 
   const openRow = useMemo(() => data.find((r) => r.__key === openEmbedForKey) ?? null, [data, openEmbedForKey]);
   const embedId = useMemo(() => getAirbnbId(openRow?.listing_link ?? null), [openRow?.listing_link]);
+
+  const confirmRow = useMemo(() => data.find((r) => r.__key === confirmDesktopKey) ?? null, [data, confirmDesktopKey]);
 
   const hasUnsavedEdits = useMemo(() => {
     for (const r of data) {
@@ -199,6 +204,25 @@ export default function StaysTable() {
     };
   }, []);
 
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 950px)");
+    const apply = () => setIsDesktop(!!mq.matches);
+    apply();
+
+    const handler = () => apply();
+    if (typeof mq.addEventListener === "function") mq.addEventListener("change", handler);
+    else mq.addListener(handler);
+
+    return () => {
+      if (typeof mq.removeEventListener === "function") mq.removeEventListener("change", handler);
+      else mq.removeListener(handler);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop) setConfirmDesktopKey(null);
+  }, [isDesktop]);
+
   const addRow = () => {
     const iso = new Date().toISOString().slice(0, 10);
 
@@ -206,7 +230,7 @@ export default function StaysTable() {
       place: "Pozuzo",
       check_in_date: iso,
       check_out_date: iso,
-      total_price: 0,
+      total_price: null as any,
       rooms: null,
       beds: null,
       listing_link: null,
@@ -279,7 +303,7 @@ export default function StaysTable() {
         place: rowToSave.place,
         check_in_date: rowToSave.check_in_date,
         check_out_date: rowToSave.check_out_date,
-        total_price: Number(rowToSave.total_price),
+        total_price: rowToSave.total_price == null ? null : Number(rowToSave.total_price),
         rooms: rowToSave.rooms,
         beds: rowToSave.beds,
         listing_link: urlTrimmed,
@@ -335,6 +359,7 @@ export default function StaysTable() {
       if (!res.ok || !j?.ok) throw new Error(j?.error || `Error eliminando (HTTP ${res.status})`);
 
       if (openEmbedForKey === row.__key) setOpenEmbedForKey(null);
+      setConfirmDesktopKey(null);
       await refresh({ silent: true, force: true });
     } catch (e: any) {
       updateLocal(row.__key, { __deleting: false, __error: e?.message || "Error eliminando", __confirm_delete: false });
@@ -343,6 +368,11 @@ export default function StaysTable() {
 
   const askDelete = (row: UIStayRow) => {
     if (row.__saving || row.__deleting) return;
+
+    if (isDesktop) {
+      setConfirmDesktopKey(row.__key);
+      return;
+    }
 
     if (row.__confirm_delete) {
       deleteRow(row);
@@ -642,6 +672,34 @@ export default function StaysTable() {
           align-items: center;
           justify-content: center;
         }
+
+        .confirmCard {
+          width: min(420px, calc(100vw - 32px));
+          background: #e8f6ee;
+          border: 1px solid #c6d9cc;
+          border-radius: 16px;
+          padding: 14px;
+          color: #1f5132;
+          font-weight: 900;
+          box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
+        }
+        .confirmTitle {
+          font-size: 18px;
+          font-weight: 950;
+          margin-bottom: 6px;
+        }
+        .confirmSub {
+          font-size: 13px;
+          font-weight: 800;
+          color: #2a5e3b;
+          opacity: 0.95;
+        }
+        .confirmActions {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+          margin-top: 14px;
+        }
       `}</style>
 
       <div className="topbar">
@@ -679,7 +737,7 @@ export default function StaysTable() {
 
       <div className="cards">
         {data.map((r) => {
-          const perPerson = (Number(r.total_price) / 4) || 0;
+          const perPerson = r.total_price == null ? 0 : Number(r.total_price) / 4;
           const id = getAirbnbId(r.listing_link ?? null);
 
           return (
@@ -711,8 +769,13 @@ export default function StaysTable() {
                     type="number"
                     inputMode="decimal"
                     step="0.01"
-                    value={Number(r.total_price)}
-                    onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0), __confirm_delete: false })}
+                    value={r.total_price ?? ""}
+                    onChange={(e) =>
+                      updateLocal(r.__key, {
+                        total_price: e.target.value === "" ? (null as any) : toNum(e.target.value, 0),
+                        __confirm_delete: false,
+                      })
+                    }
                   />
                 </div>
               </div>
@@ -864,7 +927,14 @@ export default function StaysTable() {
                   </td>
 
                   <td className="colMoney">
-                    <input className="input" type="number" inputMode="decimal" step="0.01" value={Number(r.total_price)} onChange={(e) => updateLocal(r.__key, { total_price: toNum(e.target.value, 0), __confirm_delete: false })} />
+                    <input className="input" type="number" inputMode="decimal" step="0.01" value={r.total_price ?? ""}
+                      onChange={(e) =>
+                        updateLocal(r.__key, {
+                          total_price: e.target.value === "" ? (null as any) : toNum(e.target.value, 0),
+                          __confirm_delete: false,
+                        })
+                      }
+                    />
                   </td>
 
                   <td className="colPP" style={{ color: "#2a5e3b", fontWeight: 900 }}>
@@ -886,9 +956,7 @@ export default function StaysTable() {
                       value={r.__link_input ?? ""}
                       onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })}
                     />
-                    {r.__error ? (
-                      <div style={{ marginTop: 6, color: "#7a1020", fontWeight: 900 }}>{r.__error}</div>
-                    ) : null}
+                    {r.__error ? <div style={{ marginTop: 6, color: "#7a1020", fontWeight: 900 }}>{r.__error}</div> : null}
                   </td>
 
                   <td className="colIcon">
@@ -910,7 +978,7 @@ export default function StaysTable() {
 
                   <td className="colDel">
                     <button className="btn btnDanger btnIcon" onClick={() => askDelete(r)} disabled={!!r.__saving || !!r.__deleting} title="Eliminar">
-                      {r.__deleting ? "…" : r.__confirm_delete ? "?" : "-"}
+                      {r.__deleting ? "…" : "-"}
                     </button>
                   </td>
                 </tr>
@@ -946,6 +1014,32 @@ export default function StaysTable() {
                 Sin link guardado para mostrar preview.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {isDesktop && confirmDesktopKey && confirmRow && (
+        <div className="overlay" onClick={() => setConfirmDesktopKey(null)}>
+          <div className="confirmCard" onClick={(e) => e.stopPropagation()}>
+            <div className="confirmTitle">¿Seguro, loco?</div>
+            <div className="confirmSub">
+              Se eliminará: <span style={{ fontWeight: 950 }}>{confirmRow.place}</span> ({toISODate(confirmRow.check_in_date)} → {toISODate(confirmRow.check_out_date)})
+            </div>
+
+            {confirmRow.__error ? (
+              <div style={{ marginTop: 10, background: "#fee", border: "1px solid #f5c2c2", padding: 10, borderRadius: 12, color: "#7a1020", fontWeight: 900, textAlign: "center" }}>
+                {confirmRow.__error}
+              </div>
+            ) : null}
+
+            <div className="confirmActions">
+              <button className="btn" onClick={() => setConfirmDesktopKey(null)} disabled={!!confirmRow.__deleting}>
+                Cancelar
+              </button>
+              <button className="btn btnDanger" onClick={() => deleteRow(confirmRow)} disabled={!!confirmRow.__deleting}>
+                {confirmRow.__deleting ? "Eliminando…" : "Sí, eliminar"}
+              </button>
+            </div>
           </div>
         </div>
       )}
