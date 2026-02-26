@@ -1,7 +1,6 @@
 // src/app/api/activities/save/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,12 +27,13 @@ function toISODate(v: any) {
   return String(v).slice(0, 10);
 }
 
-function isValidId(id: any) {
+function isValidIdBigint(id: any) {
   if (id === undefined || id === null) return false;
   const s = String(id).trim();
   if (!s) return false;
   const sl = s.toLowerCase();
-  return sl !== "null" && sl !== "undefined";
+  if (sl === "null" || sl === "undefined") return false;
+  return /^[0-9]+$/.test(s);
 }
 
 export async function POST(req: Request) {
@@ -43,11 +43,14 @@ export async function POST(req: Request) {
 
     const rowsIn = Array.isArray(body?.rows) ? body.rows : null;
     if (!rowsIn) {
-      return NextResponse.json({ ok: false, error: "Body inválido: { rows: [...] }" }, { status: 400, headers: noStoreHeaders() });
+      return NextResponse.json(
+        { ok: false, error: "Body inválido: { rows: [...] }" },
+        { status: 400, headers: noStoreHeaders() }
+      );
     }
 
     const clean: Array<{
-      id: string;
+      id?: number;
       place: string;
       activity_date: string;
       activity: string;
@@ -61,45 +64,67 @@ export async function POST(req: Request) {
       const place = String(r?.place ?? "").trim();
       const activity = String(r?.activity ?? "").trim();
 
-      if (!place) return NextResponse.json({ ok: false, error: "Falta place en una fila." }, { status: 400, headers: noStoreHeaders() });
-      if (!activity) return NextResponse.json({ ok: false, error: "Falta activity en una fila." }, { status: 400, headers: noStoreHeaders() });
+      if (!place)
+        return NextResponse.json({ ok: false, error: "Falta place en una fila." }, { status: 400, headers: noStoreHeaders() });
+      if (!activity)
+        return NextResponse.json({ ok: false, error: "Falta activity en una fila." }, { status: 400, headers: noStoreHeaders() });
 
       const order_no_raw = Number(r?.order_no);
       const order_no = Number.isFinite(order_no_raw) && order_no_raw > 0 ? Math.floor(order_no_raw) : 1;
 
-      const id = isValidId(r?.id) ? String(r.id).trim() : randomUUID();
+      const row: any = { place, activity_date, activity, order_no };
 
-      clean.push({ id, place, activity_date, activity, order_no });
+      if (isValidIdBigint(r?.id)) row.id = Number(String(r.id).trim());
+
+      clean.push(row);
     }
 
     const datesTouched = Array.from(new Set(clean.map((x) => x.activity_date)));
 
     for (const d of datesTouched) {
       const incomingForDate = clean.filter((x) => x.activity_date === d);
-      const keepIds = incomingForDate.map((x) => x.id);
+
+      const keepIds = incomingForDate
+        .filter((x) => typeof (x as any).id === "number" && Number.isFinite((x as any).id))
+        .map((x) => String((x as any).id));
 
       const { data: existing, error: exErr } = await sb.from("activities").select("id").eq("activity_date", d);
       if (exErr) throw exErr;
 
       const existingIds = (existing ?? []).map((x: any) => String(x.id));
-      const toDelete = existingIds.filter((id) => !keepIds.includes(id));
+      const toDelete = keepIds.length ? existingIds.filter((id) => !keepIds.includes(id)) : existingIds;
 
       if (toDelete.length) {
         const { error: delErr } = await sb.from("activities").delete().in("id", toDelete);
         if (delErr) throw delErr;
       }
 
-      const payload = incomingForDate.map((x) => ({
-        id: x.id,
-        place: x.place,
-        activity_date: x.activity_date,
-        activity: x.activity,
-        order_no: x.order_no,
-      }));
+      const toUpsert = incomingForDate.filter((x) => typeof (x as any).id === "number");
+      const toInsert = incomingForDate.filter((x) => typeof (x as any).id !== "number");
 
-      if (payload.length) {
+      if (toUpsert.length) {
+        const payload = toUpsert.map((x: any) => ({
+          id: x.id,
+          place: x.place,
+          activity_date: x.activity_date,
+          activity: x.activity,
+          order_no: x.order_no,
+        }));
+
         const { error: upErr } = await sb.from("activities").upsert(payload, { onConflict: "id" });
         if (upErr) throw upErr;
+      }
+
+      if (toInsert.length) {
+        const payload = toInsert.map((x: any) => ({
+          place: x.place,
+          activity_date: x.activity_date,
+          activity: x.activity,
+          order_no: x.order_no,
+        }));
+
+        const { error: insErr } = await sb.from("activities").insert(payload);
+        if (insErr) throw insErr;
       }
     }
 

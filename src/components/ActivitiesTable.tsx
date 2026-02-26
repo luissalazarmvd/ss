@@ -1,4 +1,3 @@
-// src/components/ActivitiesTable.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -75,9 +74,7 @@ async function fetchActivitiesNoCache(): Promise<ActivityRow[]> {
     },
   });
 
-  const j: ListResp = await res.json().catch(
-    () => ({ ok: false, rows: [], error: "Respuesta inválida" } as any)
-  );
+  const j: ListResp = await res.json().catch(() => ({ ok: false, rows: [], error: "Respuesta inválida" } as any));
   if (!res.ok || !j?.ok) throw new Error(j?.error || `Error cargando (HTTP ${res.status})`);
   return j.rows ?? [];
 }
@@ -101,8 +98,6 @@ export default function ActivitiesTable() {
 
   const aliveRef = useRef(true);
   const refreshInFlightRef = useRef(false);
-
-  // IMPORTANT: no dependemos de dataTransfer.getData() durante dragover (en varios browsers viene vacío).
   const dragRef = useRef<{ key: string; date: string } | null>(null);
 
   const grouped = useMemo(() => {
@@ -147,18 +142,8 @@ export default function ActivitiesTable() {
   useEffect(() => {
     aliveRef.current = true;
     refresh();
-
-    const onVis = () => {
-      if (document.visibilityState === "visible") refresh({ silent: true });
-    };
-    document.addEventListener("visibilitychange", onVis);
-
-    const t = setInterval(() => refresh({ silent: true }), 45000);
-
     return () => {
       aliveRef.current = false;
-      document.removeEventListener("visibilitychange", onVis);
-      clearInterval(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -192,7 +177,6 @@ export default function ActivitiesTable() {
         },
       ];
 
-      // Que caiga al final de su fecha (según order_no)
       const withOrder = renumberDate(
         next.map((x) => (toISODate(x.activity_date) === date && x.__key === k ? { ...x, order_no: 1e9 } : x)),
         date
@@ -225,7 +209,6 @@ export default function ActivitiesTable() {
 
     setSaving(true);
     try {
-      // armamos payload RESPETANDO orden visual (el orden de items en grouped)
       const out: any[] = [];
       for (const [d, items] of grouped) {
         items.forEach((r, idx) => {
@@ -233,7 +216,7 @@ export default function ActivitiesTable() {
             place: r.place,
             activity_date: d,
             activity: r.activity,
-            order_no: idx + 1, // <- esto es lo que Supabase debe guardar para reordenar
+            order_no: idx + 1,
           };
           if (isValidId(r.id)) base.id = r.id;
           out.push(base);
@@ -296,7 +279,6 @@ export default function ActivitiesTable() {
     }
   };
 
-  // ---- DnD helpers (solo el handle es draggable) ----
   const startDrag = (key: string, date: string) => (e: React.DragEvent) => {
     if (!key || !date) return;
 
@@ -305,14 +287,12 @@ export default function ActivitiesTable() {
     setDragDate(date);
     setOverKey(null);
 
-    // setData igual (sirve para algunos browsers / drag image), pero NO dependemos de leerlo en dragover
     const payload = JSON.stringify({ key, date });
     try {
       e.dataTransfer.setData("text/plain", payload);
       e.dataTransfer.effectAllowed = "move";
     } catch {}
 
-    // evita que el drag arranque desde texto seleccionado
     try {
       (e.currentTarget as HTMLElement).blur?.();
     } catch {}
@@ -336,8 +316,6 @@ export default function ActivitiesTable() {
 
       const moved = moveItem(prev, from, to);
       const ren = renumberDate(moved, date);
-
-      // Mantén orden global consistente (fecha + order_no)
       return ren.sort(sortRows);
     });
   };
@@ -348,7 +326,7 @@ export default function ActivitiesTable() {
     if (p.date !== targetDate) return;
     if (p.key === targetKey) return;
 
-    e.preventDefault(); // <- necesario para permitir drop
+    e.preventDefault();
     e.dataTransfer.dropEffect = "move";
 
     setOverKey(targetKey);
@@ -384,15 +362,6 @@ export default function ActivitiesTable() {
           border: 1px solid #1f5132;
           background: #1f5132;
           color: #e8f6ee;
-        }
-        .btnIcon {
-          width: 44px;
-          height: 44px;
-          border-radius: 14px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0;
         }
         .muted {
           color: #2a5e3b;
@@ -606,9 +575,6 @@ export default function ActivitiesTable() {
           <button className="btn btnPrimary" onClick={saveAll} disabled={saving}>
             {saving ? "Guardando…" : "Guardar"}
           </button>
-          <button className="btn btnPrimary btnIcon" onClick={() => addRowForDate(DATE_OPTIONS[0])} title="Agregar fila">
-            +
-          </button>
         </div>
       </div>
 
@@ -635,22 +601,11 @@ export default function ActivitiesTable() {
                   data-rowkey={r.__key}
                   data-date={d}
                 >
-                  {/* SOLO EL HANDLE ES DRAGGABLE */}
-                  <div
-                    className="dragHandle dragCell"
-                    title="Arrastrar"
-                    draggable
-                    onDragStart={startDrag(r.__key, d)}
-                    onDragEnd={endDrag}
-                  >
+                  <div className="dragHandle dragCell" title="Arrastrar" draggable onDragStart={startDrag(r.__key, d)} onDragEnd={endDrag}>
                     ≡
                   </div>
 
-                  <select
-                    className="select placeCell"
-                    value={r.place}
-                    onChange={(e) => setCell(r.__key, { place: e.target.value })}
-                  >
+                  <select className="select placeCell" value={r.place} onChange={(e) => setCell(r.__key, { place: e.target.value })}>
                     {PLACES.map((p) => (
                       <option key={p} value={p}>
                         {p}
@@ -666,8 +621,6 @@ export default function ActivitiesTable() {
                     onInput={(e) => autoGrow(e.currentTarget)}
                     onChange={(e) => {
                       setCell(r.__key, { activity: e.target.value });
-
-                      // iPhone/Safari: ajusta altura después del re-render
                       requestAnimationFrame(() => autoGrow(e.currentTarget));
                     }}
                   />
