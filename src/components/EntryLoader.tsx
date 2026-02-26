@@ -77,7 +77,7 @@ export default function EntryLoader({ durationMs = 2100 }: { durationMs?: number
         }
       `}</style>
 
-      <div className="overlay" aria-label="Cargando">
+      <div className="overlay" aria-label="Cagando 💩">
         <div className="wrap">
           <div className="imgBox">
             <Image
