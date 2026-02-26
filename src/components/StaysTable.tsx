@@ -468,6 +468,10 @@ export default function StaysTable() {
           font-weight: 800;
           outline: none;
         }
+        .inputErr {
+          border: 2px solid #7a1020 !important;
+          background: #ffecec !important;
+        }
         .input::placeholder {
           color: rgba(31, 81, 50, 0.55);
           font-weight: 800;
@@ -738,7 +742,7 @@ export default function StaysTable() {
 
                 <div className="linkLine">
                   <input
-                    className="input"
+                    className={`input ${((r.__link_input ?? "").trim() && !getAirbnbId((r.__link_input ?? "").trim())) ? "inputErr" : ""}`}
                     placeholder="Pega link aquí…"
                     value={r.__link_input ?? ""}
                     onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })}
@@ -865,8 +869,15 @@ export default function StaysTable() {
                   </td>
 
                   <td className="colLink">
-                    <input className="input" placeholder="Pega…" value={r.__link_input ?? ""} onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })} />
-                    {r.__error ? <div style={{ marginTop: 6, color: "#7a1020", fontWeight: 900 }}>{r.__error}</div> : null}
+                    <input
+                      className={`input ${((r.__link_input ?? "").trim() && !getAirbnbId((r.__link_input ?? "").trim())) ? "inputErr" : ""}`}
+                      placeholder="Pega…"
+                      value={r.__link_input ?? ""}
+                      onChange={(e) => updateLocal(r.__key, { __link_input: e.target.value, __confirm_delete: false })}
+                    />
+                    {r.__error ? (
+                      <div style={{ marginTop: 6, color: "#7a1020", fontWeight: 900 }}>{r.__error}</div>
+                    ) : null}
                   </td>
 
                   <td className="colIcon">
