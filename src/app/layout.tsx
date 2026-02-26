@@ -25,6 +25,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           margin: 0,
           padding: 16,
           background: "#cfe9d7",
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         <style>{`
@@ -85,7 +88,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         <Script src="https://www.airbnb.com.pe/embeddable/airbnb_jssdk" strategy="afterInteractive" />
-        {children}
+
+        <main style={{ flex: 1 }}>{children}</main>
+
+        <footer
+          style={{
+            marginTop: 16,
+            padding: "10px 12px",
+            textAlign: "center",
+            color: "#1f5132",
+            fontWeight: 800,
+            opacity: 0.9,
+          }}
+        >
+          © 2026 Desarrollado por un chinito de mantenimiento. Todos los derechos reservados. <span style={{ fontWeight: 950 }}>TU NOMBRE</span>
+        </footer>
       </body>
     </html>
   );
