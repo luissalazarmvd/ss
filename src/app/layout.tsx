@@ -101,7 +101,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             opacity: 0.9,
           }}
         >
-          © 2026 Desarrollado por un chinito de mantenimiento. Todos los derechos reservados. <span style={{ fontWeight: 950 }}>TU NOMBRE</span>
+          © 2026 Desarrollado por un chinito de mantenimiento. Todos los derechos reservados. <span style={{ fontWeight: 950 }}>8===D</span>
         </footer>
       </body>
     </html>
