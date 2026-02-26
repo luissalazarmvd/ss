@@ -38,6 +38,12 @@ function getAirbnbId(url: string | null) {
   return m?.[1] ?? null;
 }
 
+function isInvalidLinkInput(row: UIStayRow) {
+  const typed = (row.__link_input ?? "").trim();
+  if (!typed) return false; // vacío = ok
+  return !getAirbnbId(typed); // tiene texto pero no tiene /rooms/<id>
+}
+
 function fmtMoney(n: any) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "";
@@ -789,7 +795,12 @@ export default function StaysTable() {
               )}
 
               <div className="rowActions" style={{ justifyContent: "center" }}>
-                <button className="btn btnPrimary" onClick={() => saveRow(r)} disabled={!!r.__saving || !!r.__deleting}>
+                <button
+                  className="btn btnPrimary"
+                  onClick={() => saveRow(r)}
+                  disabled={!!r.__saving || !!r.__deleting || isInvalidLinkInput(r)}
+                  title={isInvalidLinkInput(r) ? "Link inválido" : "Guardar"}
+                >
                   {r.__saving ? "Guardando…" : "Guardar"}
                 </button>
 
@@ -887,7 +898,12 @@ export default function StaysTable() {
                   </td>
 
                   <td className="colSave">
-                    <button className="btn btnPrimary btnSaveMini" onClick={() => saveRow(r)} disabled={!!r.__saving || !!r.__deleting}>
+                    <button
+                      className="btn btnPrimary btnSaveMini"
+                      onClick={() => saveRow(r)}
+                      disabled={!!r.__saving || !!r.__deleting || isInvalidLinkInput(r)}
+                      title={isInvalidLinkInput(r) ? "Link inválido" : "Guardar"}
+                    >
                       {r.__saving ? "…" : "Guardar"}
                     </button>
                   </td>
