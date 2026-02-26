@@ -191,7 +191,7 @@ export default function StaysTable() {
     return () => {
       aliveRef.current = false;
     };
-  }, [hasUnsavedEdits]);
+  }, []);
 
   const addRow = () => {
     const iso = new Date().toISOString().slice(0, 10);
