@@ -705,7 +705,7 @@ export default function StaysTable() {
       <div className="topbar">
         <div>
           <div style={{ fontWeight: 900, fontSize: 18, color: "#1f5132" }}>Opciones</div>
-          <div className="muted">Edita cualquier fila y guarda. “+” crea una nueva. “-” elimina.</div>
+          <div className="muted">Edita cualquier fila y guarda. “+” crea una nueva. “-” elimina. Gabso gay.</div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -1037,7 +1037,7 @@ export default function StaysTable() {
                 Cancelar
               </button>
               <button className="btn btnDanger" onClick={() => deleteRow(confirmRow)} disabled={!!confirmRow.__deleting}>
-                {confirmRow.__deleting ? "Eliminando…" : "Sí, eliminar"}
+                {confirmRow.__deleting ? "Eliminando…" : "sí crj"}
               </button>
             </div>
           </div>
