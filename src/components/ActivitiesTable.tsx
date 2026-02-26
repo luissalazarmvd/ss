@@ -99,6 +99,13 @@ export default function ActivitiesTable() {
   const aliveRef = useRef(true);
   const refreshInFlightRef = useRef(false);
   const dragRef = useRef<{ key: string; date: string } | null>(null);
+  const touchDragRef = useRef<{
+    active: boolean;
+    key: string;
+    date: string;
+  } | null>(null);
+
+  const touchRafRef = useRef<number | null>(null);  
 
   const grouped = useMemo(() => {
     const byDate = new Map<string, UIActivityRow[]>();
@@ -338,6 +345,66 @@ export default function ActivitiesTable() {
     endDrag();
   };
 
+  const startTouchDrag = (key: string, date: string) => (e: React.PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+
+    e.preventDefault();
+
+    touchDragRef.current = { active: true, key, date };
+    dragRef.current = { key, date };
+
+    setDragKey(key);
+    setDragDate(date);
+    setOverKey(null);
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {}
+  };
+
+  const moveTouchDrag = (e: React.PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    const p = touchDragRef.current;
+    if (!p?.active) return;
+
+    e.preventDefault();
+
+    if (touchRafRef.current) cancelAnimationFrame(touchRafRef.current);
+    touchRafRef.current = requestAnimationFrame(() => {
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const row = el?.closest?.("[data-rowkey]") as HTMLElement | null;
+      if (!row) return;
+
+      const targetKey = row.getAttribute("data-rowkey") || "";
+      const targetDate = row.getAttribute("data-date") || "";
+      if (!targetKey || !targetDate) return;
+
+      if (p.date !== targetDate) return;
+      if (p.key === targetKey) return;
+
+      setOverKey(targetKey);
+      reorderWithinDate(p.key, targetKey, p.date);
+
+      touchDragRef.current = { active: true, key: targetKey, date: p.date };
+      dragRef.current = { key: targetKey, date: p.date };
+      setDragKey(targetKey);
+      setDragDate(p.date);
+    });
+  };
+
+  const endTouchDrag = (e?: React.PointerEvent) => {
+    const p = touchDragRef.current;
+    if (!p?.active) return;
+
+    if (touchRafRef.current) {
+      cancelAnimationFrame(touchRafRef.current);
+      touchRafRef.current = null;
+    }
+
+    touchDragRef.current = null;
+    endDrag();
+  }; 
+
   return (
     <>
       <style jsx>{`
@@ -436,6 +503,7 @@ export default function ActivitiesTable() {
           display: grid;
           grid-template-columns: 36px 160px minmax(0, 1fr) 44px;
           gap: 10px;
+          transition: background 120ms ease, outline-color 120ms ease;
           padding: 10px 12px;
           border-bottom: 1px solid rgba(31, 81, 50, 0.15);
           align-items: center;
@@ -461,6 +529,9 @@ export default function ActivitiesTable() {
 
         .dragHandle {
           width: 36px;
+          touch-action: none;
+          -webkit-user-select: none;
+          user-select: none;
           height: 40px;
           border-radius: 12px;
           border: 1px solid #c6d9cc;
@@ -470,7 +541,6 @@ export default function ActivitiesTable() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          user-select: none;
           cursor: grab;
         }
 
@@ -601,7 +671,17 @@ export default function ActivitiesTable() {
                   data-rowkey={r.__key}
                   data-date={d}
                 >
-                  <div className="dragHandle dragCell" title="Arrastrar" draggable onDragStart={startDrag(r.__key, d)} onDragEnd={endDrag}>
+                  <div
+                    className="dragHandle dragCell"
+                    title="Arrastrar"
+                    draggable
+                    onDragStart={startDrag(r.__key, d)}
+                    onDragEnd={endDrag}
+                    onPointerDown={startTouchDrag(r.__key, d)}
+                    onPointerMove={moveTouchDrag}
+                    onPointerUp={endTouchDrag}
+                    onPointerCancel={endTouchDrag}
+                  >
                     ≡
                   </div>
 
