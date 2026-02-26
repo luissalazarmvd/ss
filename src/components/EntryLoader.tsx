@@ -89,7 +89,7 @@ export default function EntryLoader({ durationMs = 2100 }: { durationMs?: number
               priority
             />
           </div>
-          <div className="txt">Cargando…</div>
+          <div className="txt">Cagando 💩</div>
         </div>
       </div>
     </>
