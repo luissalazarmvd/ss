@@ -1,15 +1,21 @@
 // src/app/layout.tsx
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = { title: "gays" };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // Psychosocial ~135 BPM
   const BPM = 135;
-  const beat = 60 / BPM;           // 0.444...
-  const loopSeconds = beat * 8;    // 8 beats = 2 compases = 3.555...
+  const beat = 60 / BPM;
+  const loopSeconds = beat * 8;
 
   return (
     <html lang="es">
@@ -25,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           :root{
             --tile: 120px;
             --opacity: 0.12;
-            --loop: ${loopSeconds}s; /* 8 beats a ~135 BPM */
+            --loop: ${loopSeconds}s;
           }
 
           .bgTiles{
@@ -47,9 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             will-change: transform;
           }
 
-          /* “baila en su lugar” con acentos por beat (0,2,4,6) */
           @keyframes tileHeadbang{
-            /* 8 beats (0,12.5,25,...,100) con golpes fuertes */
             0%    { transform: translate(0px, 0px) rotate(0deg)   scale(1); }
             12.5% { transform: translate(0px, 2px) rotate(8deg)   scale(1.02); }
             25%   { transform: translate(0px, -6px) rotate(-14deg) scale(1.03); }
@@ -61,7 +65,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             100%  { transform: translate(0px, 0px) rotate(0deg)   scale(1); }
           }
 
-          /* contenido encima */
           body > * { position: relative; z-index: 1; }
 
           @media (prefers-reduced-motion: reduce){
@@ -75,7 +78,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               key={i}
               className="bgTile"
               style={{
-                // desfase por “beat” para que no bailen iguales
                 animationDelay: `${(i % 8) * (loopSeconds / 8)}s`,
               }}
             />
