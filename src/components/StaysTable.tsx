@@ -872,7 +872,7 @@ export default function StaysTable() {
                 </button>
 
                 <button className="btn btnDanger btnDangerWide btnDelWide" onClick={() => askDelete(r)} disabled={!!r.__saving || !!r.__deleting} title="Eliminar">
-                  {r.__deleting ? "Eliminando…" : r.__confirm_delete ? "¿Seguro?" : "Eliminar (-)"}
+                  {r.__deleting ? "Eliminando…" : r.__confirm_delete ? "Segura loca?" : "Eliminar (-)"}
                 </button>
               </div>
             </div>
@@ -1021,7 +1021,7 @@ export default function StaysTable() {
       {isDesktop && confirmDesktopKey && confirmRow && (
         <div className="overlay" onClick={() => setConfirmDesktopKey(null)}>
           <div className="confirmCard" onClick={(e) => e.stopPropagation()}>
-            <div className="confirmTitle">¿Seguro, loco?</div>
+            <div className="confirmTitle">Segura loca?</div>
             <div className="confirmSub">
               Se eliminará: <span style={{ fontWeight: 950 }}>{confirmRow.place}</span> ({toISODate(confirmRow.check_in_date)} → {toISODate(confirmRow.check_out_date)})
             </div>
